@@ -1,11 +1,3 @@
-import buildFragments from './buildFragments';
-import buildMutations from './buildMutations';
-
-export {
-	buildFragments,
-	buildMutations
-};
-
 import {
 	values,
 	toPairs,
@@ -40,8 +32,8 @@ import {
 	pathPairs,
 	pathType,
 	isUnion
-} from './util';
-import GraphQLDate from './scalar/date';
+} from '../util';
+import GraphQLDate from '../scalar/Date';
 
 import {
 	addMutation,
@@ -386,12 +378,13 @@ function rootFields(options) {
 			fields: options.models.reduce((fields, model) => ({
 				...fields,
 				...modelMutations(model, viewerField, options)
-			}), {})
+			}), mapValues(options.mutations, mutation => typeof mutation === 'function' ? mutation(objectTypes) : mutation))
 		})
 	};
 }
 export default function(models, options = {}) {
 	options = {
+		mutations: {},
 		...options,
 		models: models,
 		skip: ['_id', '__v', '__t'].concat(options.skip || [])

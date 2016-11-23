@@ -48,7 +48,9 @@ export function addMutation(model, options) {
 			
 			doc.set(field, value);
 		}
-		return doc.save();
+		return {
+			[model.modelName]: await doc.save()
+		};
 	}
 }
 export function updateMutation(model, options) {
@@ -73,13 +75,17 @@ export function updateMutation(model, options) {
 				doc.set(field, value);
 		}
 		await doc.save();
-		return model.findById(id);
+		return {
+			[model.modelName]: await model.findById(id)
+		};
 	}
 }
 export function removeMutation(model, options) {
 	return async function(input, context, info) {
 		const { id } = fromGlobalId(id)
 		await model.removeById(id);
-		return { id };
+		return {
+			id
+		};
 	}
 }

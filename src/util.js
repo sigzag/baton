@@ -1,18 +1,10 @@
-import EmbeddedDocument from 'mongoose/lib/types/embedded';
-import SchemaType from 'mongoose/lib/schematype';
-import ObjectId from 'mongoose/lib/schema/objectid';
-import DocumentArray from 'mongoose/lib/schema/documentarray';
-import SchemaArray from 'mongoose/lib/schema/array';
-import SchemaNumber from 'mongoose/lib/schema/number';
-import SchemaBoolean from 'mongoose/lib/schema/boolean';
-import SchemaDate from 'mongoose/lib/schema/date';
-
 import { toPairs, isPlainObject } from 'lodash';
 
+// Mongoose stuffs
 export function pathPairs(paths, { skip } = {}) {
 	const result = [];
 	const schemas = {};
-	if (paths instanceof EmbeddedDocument || paths instanceof SchemaType)
+	if (paths.constructor.name === 'EmbeddedDocument' || paths.constructor.name === 'SchemaType')
 		paths = paths.schema.paths;
 	for (let [name, path] of toPairs(paths)) {
 		if (skip && ~skip.indexOf(name))
@@ -33,29 +25,63 @@ export function pathType(path) {
 	else if (path.enumValues && path.enumValues.length)
 		return 'enum';
 	else
-		switch (path.constructor) {
-			case ObjectId:
+		switch (path.constructor.name) {
+			case 'ObjectId':
 				return 'id';
-			case DocumentArray:
-			case SchemaArray:
-				if (path.caster instanceof ObjectId)
+			case 'DocumentArray':
+			case 'SchemaArray':
+				if (path.caster.constructor.name === 'ObjectId')
 					return 'ids';
 				else
 					return 'array';
-			case EmbeddedDocument:
-			case SchemaType:
+			case 'EmbeddedDocument':
+			case 'SchemaType':
 				return 'object';
-			case SchemaNumber:
+			case 'SchemaNumber':
 				return 'number';
-			case SchemaBoolean:
+			case 'SchemaBoolean':
 				return 'boolean';
-			case SchemaDate:
+			case 'SchemaDate':
 				return 'date';
 			default:
 				return 'string';
 		}
 }
-
 export function isUnion(model) {
 	return model.schema.discriminatorMapping && model.schema.discriminatorMapping.isRoot;
+}
+
+// Relay resolver decorators
+export function mutationWithClientId(mutation) {
+	return async (args, ...rest) => ({ ...(await mutation(args, ...rest)), clientMutationId: args.input.clientMutationId })
+}
+export function subscriptionWithClientId(subscription) {
+	return async (args, ...rest) => ({ ...(await subscription(args, ...rest)), clientSubscriptionId: args.input.clientSubscriptionId })
+}
+
+// Relay connection helpers
+export function edge(node, getCursor) {
+	return {
+		node,
+		cursor: typeof getCursor === 'function'
+			? getCursor(node)
+			: node[getCursor]
+	};
+}
+export function connect(nodes, params, getCursor) {
+	return {
+		edges: nodes.map(node => edge(node, getCursor)),
+		pageInfo: {
+			hasPreviousPage: nodes.length === +params.last,
+			hasNextPage: nodes.length === +params.first
+		}
+	};
+}
+
+// Handi thangs for serialization
+export function toBase64(value) {
+	return Buffer.from(String(value), 'utf8').toString('base64');
+}
+export function fromBase64(value) {
+	return Buffer.from(String(value), 'base64').toString('utf-8');
 }

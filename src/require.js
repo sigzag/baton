@@ -21,7 +21,7 @@ function isInterface({ kind }) {
 	return kind === 'InterfaceTypeDefinition';
 }
 function isInput({ kind }) {
-	return kind === 'InputValueDefinition';
+	return kind === 'InputObjectTypeDefinition';
 }
 function hasInterface(name) {
 	return name

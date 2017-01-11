@@ -53,27 +53,29 @@ export function isUnion(model) {
 
 // Relay resolver decorators
 export function mutationWithClientId(mutation) {
-	return async (args, ...rest) => ({ ...(await mutation(args, ...rest)), clientMutationId: args.input.clientMutationId })
+	return async ({ input }, context, info) => ({ clientMutationId: input.clientMutationId, ...(await mutation(input, context, info)) })
 }
 export function subscriptionWithClientId(subscription) {
-	return async (args, ...rest) => ({ ...(await subscription(args, ...rest)), clientSubscriptionId: args.input.clientSubscriptionId })
+	return async (args, context, info) => ({ clientSubscriptionId: args.input.clientSubscriptionId, ...(await subscription(args, context, info)) })
 }
 
 // Relay connection helpers
 export function edge(node, getCursor) {
 	return {
 		node,
-		cursor: typeof getCursor === 'function'
+		cursor: String(typeof getCursor === 'function'
 			? getCursor(node)
-			: node[getCursor]
+			: node[getCursor])
 	};
 }
-export function connect(nodes, params, getCursor) {
+export function connection(nodes, params, getCursor) {
 	return {
 		edges: nodes.map(node => edge(node, getCursor)),
 		pageInfo: {
-			hasPreviousPage: nodes.length === +params.last,
-			hasNextPage: nodes.length === +params.first
+			startCursor: nodes[0] && getCursor(nodes[0]),
+			endCursor: nodes[0] && getCursor(nodes[nodes.length - 1]),
+			hasPreviousPage: !!(+params.first - params.last),
+			hasNextPage: nodes.length === (+params.first || +params.last)
 		}
 	};
 }

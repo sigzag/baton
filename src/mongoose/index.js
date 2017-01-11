@@ -59,11 +59,10 @@ const idField = { name: 'id', type: new GraphQLNonNull(GraphQLID) };
 // Object resolvers
 function resolveObject(model, name) {
 	return function(rootValue, args, context, info) {
-		model.findById(rootValue[name])
-			.then(toNode);
+		model.findById(rootValue[name]).then(toNode);
 	}
 }
-function resolveObjects(model, name) {
+function resolveList(model, name) {
 	return function(rootValue, args, context, info) {
 		return model.find({ _id: { $in: rootValue[name] || [] } })
 			.then(objects => objects.map(toNode));
@@ -78,7 +77,7 @@ function resolveConnection(model, indexes) {
 				query[name] = fromGlobalId(query[name]).id;
 
 		if (after)
-			query._id = { $gt: cursorToId(after) };
+			query._id = { ...(query._id || {}), $gt: cursorToId(after) };
 		if (before)
 			query._id = { ...(query._id || {}), $lt: cursorToId(before) };
 
@@ -112,16 +111,19 @@ function resolveConnection(model, indexes) {
 		};
 	}
 }
+function resolvePropertyConnection(model, name) {
+	const resolve = resolveConnection(model, objectTypes[model.modelName].indexes);
+	return async function(rootValue, args, context, info) {
+		return resolve(rootValue, { ...args, _id: { $in: rootValue[name] || [] } });
+	}
+}
 function resolveNode({ models }) {
 	return function(rootValue, args, context, info) {
 		const { id, type } = fromGlobalId(args.id);
 		if (type === 'viewer')
 			return viewer;
 		else {
-			const model = models.find(({ modelName }) => modelName === type);
-			if (model)
-				return model.findById(id)
-					.then(toNode);
+			return mongoose.model(type).findById(id).then(toNode);
 		}
 	}
 }
@@ -194,10 +196,13 @@ function fields(rootName, paths, options, input) {
 		}, {});
 }
 function field(path, fieldName, name, options, input) {
+	const childModel = pathType(path) === 'ids' && options.models.find(({ modelName }) => modelName === path.options.ref);
 	return {
 		name,
 		type: type(path, name, options, input),
-		resolve: input ? null : resolve(path, fieldName, options)
+		resolve: input ? null : resolve(path, fieldName, options),
+		owner: !!(childModel &&
+			childModel.paths.find(path => path.options && path.options.childPath === name))
 	};
 }
 function type(path, name, options, input) {
@@ -208,6 +213,10 @@ function type(path, name, options, input) {
 			else
 				return objectTypes[path.options.ref] || nodeInterface;
 		case 'ids':
+			if (input)
+				return new GraphQLList(GraphQLID);
+			else
+				return connectionDefinition[path.options.ref];
 		case 'array':
 			return new GraphQLList(type(path.caster, name, options, input));
 		case 'object':
@@ -232,12 +241,12 @@ function resolve(path, name, { models }) {
 		case 'id':
 			{
 				const model = models.find(({ modelName }) => modelName === path.options.ref);
-				return rootValue => model.findById(rootValue[name]);
+				return resolveObject(model, name);
 			}
 		case 'ids':
 			{
 				const model = models.find(({ modelName }) => modelName === path.caster.options.ref);
-				return rootValue => model.find({ _id: { $in: rootValue[name] || [] } });
+				return resolvePropertyConnection(model, name);
 			}
 		default:
 			return rootValue => rootValue[name];
@@ -283,28 +292,15 @@ function modelMutations(model, viewer, options) {
 	const updateName = `Update${capitalize(name)}`;
 	const removeName = `Remove${capitalize(name)}`;
 
-	const addFields = {
+	const inputFields = {
 		id: idField,
 		...fields(`${name}Input`, model.schema.paths, options, true)
 	};
-	const updateFields = toPairs(addFields)
-		.filter(([name, field]) => field.type instanceof GraphQLList && field.type.typeOf === GraphQLID)
-		.reduce((fields, [name, field]) => {
-			fields[`add_${capitalize(name)}`] = {
-				name: `add_${capitalize(name)}`,
-				type: field.type // TODO - should be list of object types, roight?
-			};
-			fields[`remove_${capitalize(name)}`] = {
-				name: `remove_${capitalize(name)}`,
-				type: field.type
-			};
-			return fields;
-		}, addFields);
-	
-	return {
+
+	const mutations = {
 		[addName]: mutationWithClientMutationId({
 			name: addName,
-			inputFields: addFields,
+			inputFields,
 			outputFields: {
 				viewer,
 				[name]: {
@@ -319,7 +315,7 @@ function modelMutations(model, viewer, options) {
 		}),
 		[updateName]: mutationWithClientMutationId({
 			name: updateName,
-			inputFields: updateFields,
+			inputFields,
 			outputFields: {
 				viewer,
 				[name]: {
@@ -341,6 +337,53 @@ function modelMutations(model, viewer, options) {
 			mutateAndGetPayload: removeMutation(model, options)
 		})
 	};
+
+	for (let [_, field] of toPairs(nodeType.fields)) {
+		const connection = schema.connectionDefinitions.find(({ connectionType }) => field.type === connectionType);
+		if (connection) {
+			const childModel = options.models.find(({ modelName }) => modelName === connection.edgeType.name);
+			const addName = `Add${capitalize(field.name)}To${capitalize(name)}`;
+			const removeName = `Remove${capitalize(field.name)}From${capitalize(name)}`;
+			mutations[addName] = mutationWithClientMutationId({
+				name: addName,
+				inputFields: {
+					parent: idField,
+					id: idField,
+					...fields(`${connection.edgeType.name}Input`, childModel.schema.paths, options, true)
+				},
+				outputFields: {
+					parent: {
+						type: nodeType
+					},
+					child: {
+						type: connection.edgeType,
+						resolve: node => ({
+							node,
+							cursor: idToCursor(node.id)
+						})
+					}
+				},
+				mutateAndGetPayload: addToMutation(childModel, model, field.name, options)
+			});
+			mutations[removeName] = mutationWithClientMutationId({
+				name: removeName,
+				inputFields: {
+					parent: idField,
+					id: idField
+				},
+				outputFields: {
+					parent: {
+						type: nodeType,
+						resolve: node => node
+					},
+					id: idField
+				},
+				mutateAndGetPayload: removeFromMutation(childModel, model, field.name, options)
+			});
+		}
+	}
+	
+	return mutations;
 }
 
 // Root fields & default
@@ -392,5 +435,6 @@ export default function(models, options = {}) {
 	generateObjectTypes(options);
 	const schema = new GraphQLSchema(rootFields(options));
 	schema.objectTypes = omitBy(objectTypes, (type, name) => /Schema(Input)?$/.test(name));
+	schema.connectionDefinitions = connectionDefinition;
 	return schema;
 }

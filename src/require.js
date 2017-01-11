@@ -1,4 +1,5 @@
 import callsite from 'callsite';
+import { uniq } from 'lodash';
 import {
 	existsSync as exists,
 	statSync as stat,
@@ -28,9 +29,15 @@ function hasInterface(name) {
 		? ({ interfaces }) => interfaces && interfaces.find(({ name: { value } }) => value === name)
 		: ({ interfaces }) => interfaces && interfaces.length;
 }
+function baseType(field) {
+	if (field.type && field.type.kind === 'NonNullType')
+		return baseType(field.type.type)
+	else
+		return field.name.value;
+}
 
 function resolveType(node) {
-	const nodeType = node.constructor.name;
+	const nodeType = node.__typename || node.constructor.name;
 	return this._types.find(({ name }) => name == nodeType);
 }
 
@@ -39,6 +46,15 @@ const defaultSchemaDefinitions = `
 	interface Node { id: ID! }
 	type PageInfo { hasPreviousPage: Boolean! hasNextPage: Boolean! count: Int! }
 	interface Payload { clientMutationId: String! }
+	
+	type Geo { name: String latitude: Float! longitude: Float! latitudeDelta: Float longitudeDelta: Float }
+	input GeoInput { name: String latitude: Float! longitude: Float! latitudeDelta: Float longitudeDelta: Float }
+	
+	type Image { name: String uri: String! width: Int height: Int }
+	input ImageInput { name: String file: File! width: Int height: Int }
+	
+	type Video { name: String uri: String! frame: Image! duration: Float! }
+	input VideoInput { name: String file: File! }
 `;
 const connectionArgs = parse(`
 	type Connected { connection(first: Int last: Int before: Cursor after: Cursor): Connection! }
@@ -55,7 +71,7 @@ function readSchema(path, options) {
 
 	return read(path, options.enc || 'utf-8').replace(/@include\(\'(.*?)\'\)/g,
 		(match, filename) =>
-			readSchema(isDir ? resolve(source, filename) : filename, { ...options, source })
+			readSchema(isDir ? resolve(source, filename) : resolve(source, '..', filename), { ...options, source })
 	);
 }
 
@@ -63,7 +79,9 @@ export default function(path, options = {}) {
 	const schemaString = readSchema(resolve(dirname(callsite()[1].getFileName()), path), options);
 	
 	const connectionTypes = schemaString.match(/Connection\(.*?\)/g).map(type => `${type.slice(11,-1)}Connection`);
-	const includedScalars = scalars.concat(options.scalars || []).filter(type => new RegExp(`:\\s*${type.name}[!|\\}|\\s]`).test(schemaString));
+	const includedScalars = scalars
+		.concat(options.scalars || [])
+		.filter(type => type.name === 'Cursor' || type.name === 'File' || new RegExp(`:\\s*${type.name}[!|\\}|\\s]`).test(schemaString));
 	
 	const ast = parse(
 		defaultSchemaDefinitions
@@ -90,7 +108,12 @@ export default function(path, options = {}) {
 				field.arguments.push(...connectionArgs);
 
 	// Add clientMutationId field to input types
-	for (let def of ast.definitions.filter(isInput))
+	const inputs = ast.definitions
+		.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Mutation')
+		.fields
+		.map(({ arguments: [input] }) => baseType(input))
+		.map(name => ast.definitions.find(({ name: { value } }) => value === name));
+	for (let def of uniq(inputs))
 		def.fields.push(clientMutationIdInputValue);
 
 	// Build schema and
@@ -98,7 +121,7 @@ export default function(path, options = {}) {
 
 	// Add scalar definitions
 	for (let scalar of includedScalars)
-		schema._typeMap[scalar.name] = scalar;
+		Object.assign(schema._typeMap[scalar.name], scalar);
 
 	// Type resolvers for interfaces & unions
 	for (let def of ast.definitions.filter(isInterface)) {

@@ -5,19 +5,15 @@ import { Kind } from 'graphql/language';
 export default new GraphQLScalarType({
 	name: 'File',
 	serialize(value) {
-		if (!(value instanceof Date))
-			throw new TypeError('Field error: value is not an instance of Date');
-		if (isNaN(value.getTime()))
-			throw new TypeError('Field error: value is an invalid Date');
-
+		throw new TypeError('Field error: File is not serializable (yet(?))');
+		
 		return value.toJSON();
 	},
 	parseValue(value) {
-		const date = new Date(value);
-		if (isNaN(date.getTime()))
-			throw new TypeError('Field error: value is an invalid Date');
+		if (!value.path)
+			throw new TypeError('Field error: value is an invalid File');
 
-		return date;
+		return value.path;
 	},
 	parseLiteral(ast) {
 		if (ast.kind !== Kind.STRING)

@@ -7,5 +7,5 @@ export default [
 	Cursor,
 	Date,
 	File,
-	Geo
+	// Geo
 ];

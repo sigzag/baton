@@ -1,91 +1,83 @@
 import {
-	fromGlobalId,
-	toGlobalId
+	fromGlobalId
 } from 'graphql-relay';
-import {
-	pathPairs
-} from './util';
-
-function getRelations(model, options) {
-	const relations = {};
-	for (let relatedModel of options.models)
-		for (let [name, path] of pathPairs(relatedModel.schema.paths))
-			if (path.options.ref === model.modelName || path.options.ref === model.baseModelName)
-				for (let childPath of [].concat(path.options.childPath || []))
-					if (model.schema.path(childPath)) {
-						if (!relations[childPath])
-							relations[childPath] = {};
-						relations[childPath][relatedModel.modelName] = relatedModel;
-					}
-	for (let relation in relations)
-		if (Object.keys(relations[relation]) === 1)
-			relations[relation] = { __default: relations[relation][Object.keys(relations[relation])[0]] };
-	return relations;
-}
-function createRelation(value, { __default, ...types } = {}) {
-	if (value.id)
-		return value;
-	else if (__default)
-		return __default.create(value);
-	else if (types.hasOwnProperty(value.type))
-		return types[value.type].create(value);
-	else
-		throw new Error(`Could not create relation for ${JSON.stringify(value)}`)
-}
 
 export function addMutation(model, options) {
-	const relations = getRelations(model, options);
 	return async function(input, context, info) {
-		const doc = new model();
-		for (let [field, value] of toPairs(input)) {
-			const validModels = relations[field];
-			if (value && validModels) {
-				if (Array.instanceOf(value))
-					value = (await Promise.all(value.map(value => createRelation(value, validModels))));
-				else
-					value = await createRelation(value, validModels);
-			}
-			
-			doc.set(field, value);
-		}
+		const doc = await model.create(input);
 		return {
-			[model.modelName]: await doc.save()
+			[model.modelName]: doc
 		};
 	}
 }
 export function updateMutation(model, options) {
-	const relations = getRelations(model, options);
 	return async function(input, context, info) {
 		const { id } = fromGlobalId(input.id);
-		const doc = new model({ _id: id });
-		for (let [field, value] of toPairs(input)) {
-			const validModels = relations[field.replace(/^add_/, '')];
-			if (value && validModels) {
-				if (Array.instanceOf(value))
-					value = (await Promise.all(value.map(value => createRelation(value, validModels))));
-				else
-					value = await createRelation(value, validModels);
-			}
-
-			if (/^add_/.test(field))
-				doc[field.slice(4)].addToSet(...value);
-			else if (/^remove_/.test(field))
-				doc[field.slice(7)].pull(...value);
-			else
-				doc.set(field, value);
-		}
+		const doc = await model.findById(id);
+		doc.set(input);
 		await doc.save();
 		return {
-			[model.modelName]: await model.findById(id)
+			[model.modelName]: doc
 		};
 	}
 }
 export function removeMutation(model, options) {
 	return async function(input, context, info) {
-		const { id } = fromGlobalId(id)
+		const { id } = fromGlobalId(input.id)
 		await model.removeById(id);
 		return {
-			id
+			id: input.id
+		};
+	}
+}
+
+export function addToMutation(childModel, parentModel, connectionName, options) {
+	const owner = childModel.paths.find(path => path.options && path.options.childPath === connectionName);
+	return async function(input, context, info) {
+		const { id: parentId } = fromGlobalId(input.parent);
+		const { id: childId } = fromGlobalId(input.id);
+
+		const [parent, child] = await Promise.all([
+			parentModel.findById(parentId),
+			childId
+				? childModel.findById(childId)
+				: childModel.create(input)
+		]);
+
+		if (owner) {
+			child.set(owner.name, parent);
+			await child.save();
+		}
+
+		parent[connectionName].addToSet(child);
+		await parent.save();
+
+		return {
+			parent,
+			child
+		};
+	}
+}
+export function removeFromMutation(childModel, parentModel, connectionName, options) {
+	const owner = childModel.paths.find(path => path.options && path.options.childPath === connectionName);
+	return async function(input, context, info) {
+		const { id: parentId } = fromGlobalId(input.parent);
+		const { id: childId } = fromGlobalId(input.id);
+
+		const [parent, child] = await Promise.all([
+			parentModel.findById(parentId),
+			childModel.findById(childId)
+		]);
+
+		parent[connectionName].pull(child);
+		await Promise.all([
+			parent.save(),
+			owner && child.remove()
+		]);
+
+		return {
+			parent,
+			id: input.id
 		};
 	}
 }

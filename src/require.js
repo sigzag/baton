@@ -31,7 +31,9 @@ function hasInterface(name) {
 }
 function baseType(field) {
 	if (field.type && field.type.kind === 'NonNullType')
-		return baseType(field.type.type)
+		return baseType(field.type.type);
+	else if (field.name.value === 'input')
+		return baseType(field.type);
 	else
 		return field.name.value;
 }
@@ -43,9 +45,8 @@ function resolveType(node) {
 
 const defaultSchemaDefinitions = `
 	scalar Cursor
-	interface Node { id: ID! }
+	interface Node { id: ID! name: String }
 	type PageInfo { hasPreviousPage: Boolean! hasNextPage: Boolean! count: Int! }
-	interface Payload { clientMutationId: String! }
 	
 	type Geo { name: String latitude: Float! longitude: Float! latitudeDelta: Float longitudeDelta: Float }
 	input GeoInput { name: String latitude: Float! longitude: Float! latitudeDelta: Float longitudeDelta: Float }
@@ -62,6 +63,15 @@ const connectionArgs = parse(`
 const clientMutationIdInputValue = parse(`
 	input Input { clientMutationId: String! }
 `).definitions[0].fields[0];
+const clientMutationIdOutputValue = parse(`
+	type Output { clientMutationId: String! }
+`).definitions[0].fields[0];
+const clientSubscriptionIdInputValue = parse(`
+	input Input { clientSubscriptionId: String! }
+`).definitions[0].fields[0];
+const clientSubscriptionIdOutputValue = parse(`
+	type Output { clientSubscriptionId: String! }
+`).definitions[0].fields[0];
 
 function readSchema(path, options) {
 	const source = path;
@@ -77,17 +87,19 @@ function readSchema(path, options) {
 
 export default function(path, options = {}) {
 	const schemaString = readSchema(resolve(dirname(callsite()[1].getFileName()), path), options);
-	
+
 	const connectionTypes = schemaString.match(/Connection\(.*?\)/g).map(type => `${type.slice(11,-1)}Connection`);
 	const includedScalars = scalars
 		.concat(options.scalars || [])
 		.filter(type => type.name === 'Cursor' || type.name === 'File' || new RegExp(`:\\s*${type.name}[!|\\}|\\s]`).test(schemaString));
+	const includedEnums = (options.enums || []);
 	
 	const ast = parse(
 		defaultSchemaDefinitions
 			+ connectionTypes.map(type => `type ${type}Edge { node: ${type.slice(0,-10)}! cursor: Cursor! }`)
 			+ connectionTypes.map(type => `type ${type} { edges: [${type}Edge]! pageInfo: PageInfo! }`)
 			+ includedScalars.map(type => `scalar ${type.name}`)
+			+ includedEnums.map(type => `enum ${type.name}`)
 			+ schemaString.replace(/Connection\((.*?)\)/g, (match, type) => `${type}Connection`)
 	);
 
@@ -97,7 +109,10 @@ export default function(path, options = {}) {
 		.reduce((interfaces, def) => ({ ...interfaces, [def.name.value]: def.fields }), {});
 	for (let def of ast.definitions.filter(hasInterface()))
 		for (let { name: { value: name } } of def.interfaces)
-			def.fields.push(...interfaceFields[name]);
+			if (!interfaceFields.hasOwnProperty(name))
+				throw new Error(`Type "${def.name.value}" implements missing interface "${name}"`);
+			else
+				def.fields.push(...interfaceFields[name]);
 
 	// Add connection arguments to connection fields!
 	for (let def of ast.definitions)
@@ -107,14 +122,42 @@ export default function(path, options = {}) {
 				: ~connectionTypes.indexOf(field.type.name && field.type.name.value))
 				field.arguments.push(...connectionArgs);
 
-	// Add clientMutationId field to input types
-	const inputs = ast.definitions
-		.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Mutation')
-		.fields
-		.map(({ arguments: [input] }) => baseType(input))
-		.map(name => ast.definitions.find(({ name: { value } }) => value === name));
-	for (let def of uniq(inputs))
-		def.fields.push(clientMutationIdInputValue);
+	{
+		// Add clientMutationId field to input types
+		const inputs = ast.definitions
+			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Mutation')
+			.fields
+			.map(({ arguments: [input] }) => baseType(input))
+			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
+		for (let def of uniq(inputs))
+			def.fields.push(clientMutationIdInputValue);
+		// Add clientMutationId field to output types
+		const outputs = ast.definitions
+			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Mutation')
+			.fields
+			.map(baseType)
+			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
+		for (let def of uniq(outputs))
+			def.fields.push(clientMutationIdOutputValue);
+	} {
+		// Add clientSubscriptionId field to input types
+		const inputs = ast.definitions
+			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Subscription')
+			.fields
+			.filter(({ arguments: [input] }) => input)
+			.map(({ arguments: [input] }) => baseType(input))
+			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
+		for (let def of uniq(inputs))
+			def.fields.push(clientSubscriptionIdInputValue);
+		// Add clientSubscriptionId field to output types
+		const outputs = ast.definitions
+			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Subscription')
+			.fields
+			.map(baseType)
+			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
+		for (let def of uniq(outputs))
+			def.fields.push(clientSubscriptionIdOutputValue);
+	}
 
 	// Build schema and
 	const schema = buildASTSchema(ast);
@@ -122,6 +165,8 @@ export default function(path, options = {}) {
 	// Add scalar definitions
 	for (let scalar of includedScalars)
 		Object.assign(schema._typeMap[scalar.name], scalar);
+	for (let enumerated of includedEnums)
+		Object.assign(schema._typeMap[enumerated.name], enumerated);
 
 	// Type resolvers for interfaces & unions
 	for (let def of ast.definitions.filter(isInterface)) {
@@ -131,8 +176,10 @@ export default function(path, options = {}) {
 			.map(({ name: { value } }) => schema._typeMap[value]);
 		type.resolveType = type._typeConfig.resolveType = resolveType;
 	}
-	for (let def of ast.definitions.filter(isUnion))
+	for (let def of ast.definitions.filter(isUnion)) {
+		const type = schema._typeMap[def.name.value];
 		type.resolveType = type._typeConfig.resolveType = resolveType;
+	}
 
 	return schema;
 }

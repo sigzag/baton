@@ -3,7 +3,8 @@ import {
 	values,
 	toPairs,
 	mapValues,
-	omitBy
+	omitBy,
+	isPlainObject
 } from 'lodash';
 import {
 	GraphQLSchema,
@@ -48,14 +49,38 @@ import {
 	removeFromArrayMutation
 } from './mutations';
 
+import { connection as _connection } from '../util';
+
+export function connection(nodes, args, getCursor) {
+	return _connection(nodes.map(toNode), args, getCursor || (({ id }) => idToCursor(id)));
+}
+
 function capitalize(str) {
 	return str.charAt(0).toUpperCase() + str.slice(1);
 }
-export function toNode(doc) {
-	return doc && {
-		...doc.toObject(),
-		_type: doc.constructor.modelName
-	};
+export function toNode(doc, key, source) {
+	if (typeof doc === 'function')
+		return async (rootValue, args, ctx) => toNode(await doc.call(source, rootValue, args, ctx));
+	if (doc instanceof Sequelize.Instance)
+		return {
+			...mapValues(doc.toJSON(), (value, key) => toNode(value, key, doc)),
+			...mapValues(doc.Model.associations, resolveAssociation),
+			...mapValues(doc.Model.options.virtuals || {}, toNode),
+			id: toBase64(`${doc.Model.options.__typename}:${doc.id}`),
+			__typename: doc.Model.options.__typename
+		};
+	else if (isPlainObject(doc) || doc[Symbol.iterator])
+		return mapValues(doc, toNode);
+	else if (Array.isArray(doc))
+		return doc.map(toNode);
+	else
+		return doc;
+}
+export function resolveAssociation(assoc, resolve) {
+	if (assoc.options.connection)
+		return resolveConnection(assoc);
+	else
+		return rootValue => rootValue[assoc.accessors.get]().then(value => Array.isArray(value) ? value.map(resolve) : resolve(value));
 }
 
 // Constants
@@ -65,67 +90,6 @@ const idField = { name: 'id', type: new GraphQLNonNull(GraphQLID) };
 const nullIdField = { name: 'id', type: GraphQLID };
 
 // Object resolvers
-function resolveObject(model, name) {
-	return function(rootValue, args, context, info) {
-		return model.findById(rootValue[name]).then(toNode);
-	}
-}
-function resolveList(model, name) {
-	return function(rootValue, args, context, info) {
-		return model.find({ _id: { $in: rootValue[name] || [] } })
-			.then(objects => objects.map(toNode))
-			.then(objects => rootValue[name].map(id => objects.find(node => String(node._id) === String(id))));
-	}
-}
-function resolveConnection(model, indexes) {
-	return async function(rootValue, args, context, info) {
-		const { before, after, first, last, ...query } = args;
-
-		for (let [name, type] of indexes)
-			if (query.hasOwnProperty(name) && type === GraphQLID)
-				query[name] = fromGlobalId(query[name]).id;
-
-		if (after)
-			query._id = { ...(query._id || {}), $gt: cursorToId(after) };
-		if (before)
-			query._id = { ...(query._id || {}), $lt: cursorToId(before) };
-
-		const nodes = (await model.find(query, null, {
-			skip: (first - last) || 0,
-			limit: last || first,
-			sort: '_id'
-		})).map(toNode);
-
-		if (!nodes.length)
-			return {
-				edges: [],
-				pageInfo: {
-					startCursor: null,
-					endCursor: null,
-					hasPreviousPage: false,
-					hasNextPage: false
-				}
-			};
-		return {
-			edges: nodes.map(node => ({
-				cursor: idToCursor(node._id),
-				node: node
-			})),
-			pageInfo: {
-				startCursor: idToCursor(nodes[0]._id),
-				endCursor: idToCursor(nodes[nodes.length - 1]._id),
-				hasPreviousPage: !!(first - last),
-				hasNextPage: !!(nodes.length === (last || first))
-			}
-		};
-	}
-}
-function resolvePropertyConnection(model, name) {
-	const resolve = resolveConnection(model, objectTypes[model.modelName].indexes);
-	return function(rootValue, args, context, info) {
-		return resolve(rootValue, { ...args, _id: { $in: rootValue[name] || [] } });
-	}
-}
 function resolveNode({ models }) {
 	return function(rootValue, args, context, info) {
 		const { id, type } = fromGlobalId(args.id);
@@ -136,8 +100,6 @@ function resolveNode({ models }) {
 		}
 	}
 }
-
-// Union type resolver
 export function resolveType(types) {
 	return (value, context, info) => (!value.__t && console.log('no __t', value)) || ~types.indexOf(value.__t) && objectTypes[value.__t];
 }
@@ -149,65 +111,33 @@ function generateObjectTypes(options) {
 	objectTypes = {};
 	connectionDefinition = {};
 
-	const interfaceModels = options.models.filter(isUnion)
-	const typeModels = options.models.filter(model => !isUnion(model));
+	const nodeModels = options.models.filter(({ options: { nodeType } }) => nodeType);
+	const typeModels = options.models.filter(({ options: { objectType } }) => objectType);
 
-	for (let model of interfaceModels)
-		objectTypes[model.modelName] = new GraphQLInterfaceType({
-			name: model.modelName,
-			resolveType: resolveType(Object.keys(model.discriminators)),
-			fields: { id: globalIdField(model.modelName, obj => obj._id) }
+	for (let model of nodeModels)
+		objectTypes[model.options.nodeType] = new GraphQLObjectType({
+			name: model.options.nodeType,
+			interfaces: [nodeInterface],
+			fields: { id: globalIdField(model.modelName, obj => obj.id) }
 		});
 	for (let model of typeModels)
-		objectTypes[model.modelName] = new GraphQLObjectType({
-			name: model.modelName,
-			interfaces: model.baseModelName
-				? [nodeInterface, objectTypes[model.baseModelName]]
-				: [nodeInterface],
-			fields: { id: globalIdField(model.modelName, obj => obj._id) }
+		objectTypes[model.options.objectType] = new GraphQLObjectType({
+			name: model.options.objectType,
+			fields: { id: globalIdField(model.modelName, obj => obj.id) }
 		});
-	for (let model of options.models) {
-		connectionDefinition[model.modelName] = connectionDefinitions({ nodeType: objectTypes[model.modelName] });
-		objectTypes[model.modelName].indexes = pathPairs(model.schema.paths, options)
-			.filter(([name, { _index }]) => _index)
-			.map(([name, path]) => [name, pathType(path) === 'id' ? GraphQLID : type(path)]);
-	}
-	for (let model of interfaceModels)
-		objectTypes[model.modelName]._typeConfig.fields = {
-			id: globalIdField(model.modelName, obj => obj._id),
-			...fields(model.modelName, model.schema.paths, options)
+	for (let model of nodeModels) {
+		const nodeType = objectTypes[model.options.nodeType];
+		connectionDefinition[model.options.nodeType] = connectionDefinitions({ nodeType });
+		nodeType.indexes = model.options.indexes;
+		nodeType._typeConfig.fields = {
+			id: globalIdField(model.options.nodeType, obj => obj.id),
+			...fields(model.options.nodeType, model, options)
 		};
-	for (let model of typeModels)
-		objectTypes[model.modelName]._typeConfig.fields = {
-			id: globalIdField(model.modelName, obj => obj._id),
-			...fields(model.modelName, model.schema.paths, options),
-			...(model.baseModelName
-				? objectTypes[model.baseModelName]._typeConfig.fields
-				: {})
-		};
-}
-function schemaObjectType(name, paths, options, input) {
-	name = `${name}Schema${input ? 'Input' : ''}`;
-	if (!objectTypes[name]) {
-		objectTypes[name] = new (input ? GraphQLInputObjectType : GraphQLObjectType)({
-			name,
-			fields: {
-				id: globalIdField(name),
-				...fields(name, paths, options, input)
-			}
-		});
-		objectTypes[name].indexes = pathPairs(paths, options)
-			.filter(([name, { _index }]) => _index)
-			.map(([name, path]) => [name, pathType(path) === 'id' ? GraphQLID : type(path)]);
 	}
-	return objectTypes[name];
-}
-function schemaConnectionType(name, paths, options) {
-	const connectionName = `${name}SchemaConnection`;
-	if (connectionDefinition[connectionName])
-		return connectionDefinition[connectionName];
-	const nodeType = schemaObjectType(name, paths, options);
-	return connectionDefinition[connectionName] = connectionDefinitions({ nodeType });
+	for (let model of typeModels) {
+		const objectType = objectTypes[model.options.objectType];
+		objectType._typeConfig.fields = fields(model.options.objectType, model, options);
+	}
 }
 
 // Fields
@@ -228,102 +158,97 @@ function inputType(type) {
 	else if (type instanceof GraphQLList)
 		return new GraphQLList(inputType(type._typeConfig.type));
 }
-function fields(rootName, paths, options, input) {
-	return pathPairs(paths, options)
-		.reduce((fields, [name, path]) => {
-			fields[name] = field(path, name, `${rootName}${name}`, options, input);
+
+function attributeFields(rootName, model, options, input) {
+	return toPairs(model.attributes)
+		.reduce((fields, [name, attr]) => {
+			fields[name] = attributeField(attr, name, `${rootName}${name}`, options, input);
 			return fields;
 		}, {});
 }
-function field(path, fieldName, name, options, input) {
+function attributeField(attr, fieldName, name, options, input) {
 	const childModel = pathType(path) === 'ids' && options.models.find(({ modelName }) => modelName === path.caster.options.ref);
 	return {
 		name,
-		type: type(path, name, options, input),
-		args: !input && args(path, name, options),
-		resolve: input ? null : resolve(path, fieldName, options),
-		owner: !!(childModel && values(childModel.schema.paths).find(path => path.options && path.options.childPath === fieldName)),
-		array: pathType(path) === 'objects'
+		type: attributeType(attr, name, options, input),
+		resolve: input ? null : rootValue => rootValue[name]
 	};
 }
-function type(path, name, options, input) {
-	switch (pathType(path)) {
-		case 'id':
-			if (input)
-				return GraphQLID;
-			else
-				return objectTypes[path.options.ref] || nodeInterface;
-		case 'ids':
-			if (input)
-				return new GraphQLList(GraphQLID);
-			else
-				return connectionDefinition[path.caster.options.ref].connectionType;
-		case 'array':
-			return new GraphQLList(type(path.caster, name, options, input));
-		case 'object':
-			return schemaObjectType(path.schema && path.schema.options.name || name, path, options, input);
-		case 'objects':
-			if (input)
-				return new GraphQLList(GraphQLID);
-			else
-				return schemaConnectionType(path.schema && path.schema.options.name || name, path.options.connection.paths, options, input).connectionType;
-		case 'enum':
+function attributeType(attr, name, options, input) {
+	switch (true) {
+		case attr.options.array:
+			return new GraphQLList(attributeType(attr.options.array, name, options, input));
+		case attr.type instanceof Sequelize.ENUM:
 			return new GraphQLEnumType({
 				name,
-				values: path.enumValues.reduce((values, value) => ({ ...values, [value]: { value } }), {})
+				values: attr.type.values.reduce((values, value) => ({ ...values, [value]: { value } }), {})
 			});
-		case 'number':
+		case attr.type === Sequelize.INTEGER:
+			return GraphQLInt;
+		case attr.type === Sequelize.FLOAT:
 			return GraphQLFloat;
-		case 'boolean':
+		case attr.type === Sequelize.BOOLEAN:
 			return GraphQLBoolean;
-		case 'date':
+		case attr.type === Sequelize.DATE:
 			return GraphQLDate;
 		default:
 			return GraphQLString;
 	}
 }
-function args(path, name, options, input) {
-	switch (pathType(path)) {
-		case 'ids': {
-			const nodeType = objectTypes[path.caster.options.ref];
-			return nodeType.indexes.reduce((args, [name, type]) => ({
-				...args,
-				[name]: { type }
-			}), connectionArgs);
-		} case 'objects': {
-			const nodeType = schemaObjectType(path.schema && path.schema.options.name || name, path.options.connection.paths, options, input);
-			return nodeType.indexes.reduce((args, [name, type]) => ({
-				...args,
-				[name]: { type }
-			}), connectionArgs);
-		} default:
-			return {};
+function associationFields(rootName, model, options, input) {
+	return toPairs(model.associations)
+		.reduce((fields, [name, assoc]) => {
+			fields[name] = associationField(assoc, name, `${rootName}${name}`, options, input);
+			return fields;
+		}, {});
+}
+function associationField(assoc, fieldName, name, options, input) {
+	const childModel = pathType(path) === 'ids' && options.models.find(({ modelName }) => modelName === path.caster.options.ref);
+	return {
+		name,
+		type: associationType(assoc, name, options, input),
+		resolve: input ? null : resolveAssociation(assoc, name, options)
+	};
+}
+function associationType(assoc, name, options, input) {
+	switch (true) {
+		case assoc.options.connection:
+			return connectionDefinition[assoc.target.options.nodeType];
+		case assoc instanceof Sequelize.BelongsTo:
+		case assoc instanceof Sequelize.HasOne:
+			return objectTypes[assoc.target.options.nodeType || assoc.target.options.objectType];
+		case assoc instanceof Sequelize.BelongsToMany:
+		case assoc instanceof Sequelize.HasMany:
+			return new GraphQLList(objectTypes[assoc.target.options.nodeType || assoc.target.options.objectType]);
 	}
 }
-function resolve(path, name, { models }) {
-	switch (pathType(path)) {
-		case 'id':
-			{
-				const model = models.find(({ modelName }) => modelName === path.options.ref);
-				return resolveObject(model, name);
-			}
-		case 'ids':
-			{
-				const model = models.find(({ modelName }) => modelName === path.caster.options.ref);
-				return resolvePropertyConnection(model, name);
-			}
-		case 'objects':
-			return (rootValue, args) => slice(rootValue[name], args);
-		case 'array':
-			{
-				if (path.caster.options && path.caster.options.list) {
-					const model = models.find(({ modelName }) => modelName === path.caster.options.list);
-					return resolveList(model, name);
-				} else 
-					return rootValue => rootValue[name];
-			}
-		default:
-			return rootValue => rootValue[name];
+function resolveAssociation(assoc, name, options, input) {
+	if (assoc.options.connection)
+		return resolveConnection(assoc);
+	else
+		return rootValue => rootValue[assoc.accessors.get]();
+}
+export function connectionQuery(model, { before, after, first, last, ...where }) {
+	for (let [name, type] of toPairs(model.options.indexes))
+		if (where.hasOwnProperty(name) && model.attributes[name].options.nodeType)
+			where[name] = fromGlobalId(where[name]).id;
+
+	if (after)
+		where.id = { ...(where.id || {}), $gt: cursorToId(after) };
+	if (before)
+		where.id = { ...(where.id || {}), $lt: cursorToId(before) };
+
+	return {
+		where,
+		order: 'id',
+		offset: (first - last) || 0,
+		limit: last || first
+	};
+}
+export function resolveConnection(assoc) {
+	return async function(rootValue, args, context, info) {
+		const nodes = await rootValue[assoc.accessors.get](connectionQuery(assoc.target, args));
+		return connection(nodes, args);
 	}
 }
 
@@ -378,7 +303,7 @@ function modelMutations(model, viewer, options) {
 					type: edgeType,
 					resolve: node => ({
 						node: toNode(node),
-						cursor: idToCursor(node._id)
+						cursor: idToCursor(node.id)
 					})
 				}
 			},
@@ -439,7 +364,7 @@ function modelMutations(model, viewer, options) {
 						type: connection.edgeType,
 						resolve: ({ child }) => ({
 							node: toNode(child),
-							cursor: idToCursor(child._id)
+							cursor: idToCursor(child.id)
 						})
 					}
 				},
@@ -524,16 +449,15 @@ function rootFields(options) {
 		})
 	};
 }
-export default function(models, options = {}) {
+export default function(sequelize, options = {}) {
 	options = {
 		mutations: {},
 		...options,
-		models: models,
-		skip: ['_id', '__v', '__t'].concat(options.skip || [])
+		models: sequelize.models
 	};
 	generateObjectTypes(options);
 	const schema = new GraphQLSchema(rootFields(options));
-	schema.objectTypes = omitBy(objectTypes, (type, name) => /Schema(Input)?$/.test(name));
+	schema.objectTypes = objectTypes;
 	schema.connectionDefinitions = connectionDefinition;
 	return schema;
 }

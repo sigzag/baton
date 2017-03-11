@@ -12,8 +12,8 @@ export default function({ server, source, schema, rootValue, getContext = () => 
 	wss.on('error', function(err) {
 		console.log('ws error on ' + new Date + ':\n' + err.stack + '\n');
 	});
-	wss.on('connection', socket => {
-		const context = { socket, ...getContext(socket, socket.upgradeReq) };
+	wss.on('connection', async socket => {
+		const context = { socket, ...(await getContext(socket, socket.upgradeReq)) };
 		const subscriptions = new Map;
 
 		async function subscribe({ id, queryString, variables }) {

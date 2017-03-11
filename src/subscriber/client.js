@@ -6,7 +6,7 @@ export class SubscribableNetworkLayer extends DefaultNetworkLayer {
 	constructor(host, token) {
 		super(host, { mode: 'cors', headers: {} });
 		this.requests = {};	
-		this._initSocket(token);
+		this.setToken(token);
 	}
 
 	setToken(token) {

@@ -1,6 +1,6 @@
-import buildFragment from './buildFragment';
-import buildMutation from './buildMutation';
+import buildFragments from './buildFragments';
+import buildMutations from './buildMutations';
 export {
-	buildFragment,
-	buildMutation
+	buildFragments,
+	buildMutations
 };

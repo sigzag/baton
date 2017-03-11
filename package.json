@@ -1,6 +1,6 @@
 {
   "name": "relay-baton",
-  "version": "1.0.17",
+  "version": "1.0.23",
   "description": "Mongoose & just regular string relay schema builder & helpers & tidbits & stuffs, ooh, and relay subscriptions",
   "main": "lib/index.js",
   "scripts": {
@@ -20,6 +20,7 @@
     "graphql-relay": "^0.4.3",
     "lodash": "^4.16.6",
     "mongoose": "^4.6.7",
+    "react-dom": "^15.4.2",
     "uws": "^0.11.0"
   },
   "peerDependencies": {
@@ -27,7 +28,7 @@
   },
   "devDependencies": {
     "babel-core": "^6.18.2",
-    "babel-preset-latest": "^6.16.0",
+    "babel-preset-env": "^1.2.1",
     "babel-preset-stage-2": "^6.18.0"
   }
 }

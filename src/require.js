@@ -52,7 +52,7 @@ const defaultSchemaDefinitions = `
 	input GeoInput { name: String latitude: Float! longitude: Float! latitudeDelta: Float longitudeDelta: Float }
 	
 	type Image { name: String uri: String! width: Int height: Int }
-	input ImageInput { name: String file: File! width: Int height: Int }
+	input ImageInput { name: String uri: String file: File width: Int height: Int }
 	
 	type Video { name: String uri: String! frame: Image! duration: Float! }
 	input VideoInput { name: String file: File! }
@@ -94,14 +94,14 @@ export default function(path, options = {}) {
 		.filter(type => type.name === 'Cursor' || type.name === 'File' || new RegExp(`:\\s*${type.name}[!|\\}|\\s]`).test(schemaString));
 	const includedEnums = (options.enums || []);
 	
-	const ast = parse(
-		defaultSchemaDefinitions
-			+ connectionTypes.map(type => `type ${type}Edge { node: ${type.slice(0,-10)}! cursor: Cursor! }`)
-			+ connectionTypes.map(type => `type ${type} { edges: [${type}Edge]! pageInfo: PageInfo! }`)
-			+ includedScalars.map(type => `scalar ${type.name}`)
-			+ includedEnums.map(type => `enum ${type.name}`)
-			+ schemaString.replace(/Connection\((.*?)\)/g, (match, type) => `${type}Connection`)
-	);
+	const ast = parse(`
+		${defaultSchemaDefinitions}
+		${connectionTypes.map(type => `type ${type}Edge { node: ${type.slice(0,-10)}! cursor: Cursor! }`)}
+		${connectionTypes.map(type => `type ${type} { edges: [${type}Edge]! pageInfo: PageInfo! }`)}
+		${includedScalars.map(type => `scalar ${type.name}`)}
+		${includedEnums.map(type => `enum ${type.name} { PLACEHOLDER }`)}
+		${schemaString.replace(/Connection\((.*?)\)/g, (match, type) => `${type}Connection`)}
+	`);
 
 	// Append interfaces' fields (bizarre that this isn't a default)
 	const interfaceFields = ast.definitions

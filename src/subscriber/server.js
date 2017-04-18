@@ -7,7 +7,7 @@ import {
 	valueFromAST
 } from 'graphql';
 
-export default function({ server, source, schema, rootValue, getContext = () => ({}) }) {
+export default function({ formatError = String, server, source, schema, rootValue, getContext = () => ({}) }) {
 	const wss = new Server({ server });
 	wss.on('error', function(err) {
 		console.log('ws error on ' + new Date + ':\n' + err.stack + '\n');
@@ -37,17 +37,21 @@ export default function({ server, source, schema, rootValue, getContext = () => 
 
 			const { events, operation, ...common } = await rootValue[operationName](operationArgs, context);
 
-			async function listener(...data) {
+			async function listener(data) {
 				try {
-					const rootValue = {
-						[operationName]: {
-							...(await operation({ ...operationArgs, data }, context)),
-							...common
-						}
-					};
-					const payload = await execute(schema, query, rootValue, null, variables);
-					socket.send(JSON.stringify({ id, ...payload }));
+					const result = await operation({ ...operationArgs, ...data }, context);
+					if (result) {
+						const rootValue = {
+							[operationName]: {
+								...result,
+								...common
+							}
+						};
+						const payload = await execute(schema, query, rootValue, null, variables);
+						socket.send(JSON.stringify({ id, ...payload }));
+					}
 				} catch(e) {
+					console.log(e);
 					socket.send(JSON.stringify({ id, errors: [formatError(e)] }))
 				}
 			}

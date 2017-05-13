@@ -13,33 +13,15 @@ function resolveIdFields(input, idFields) {
 			[field]: Array.isArray(input[field])
 				? input[field].map(id => fromGlobalId(id).id)
 				: fromGlobalId(input[field]).id
-		}
-		: input, input), ['id', 'clientMutationId', 'parent', 'connectionName']);
+		} : input, input), ['id', 'clientMutationId', 'parent']);
 }
 
 export function addMutation(model, options) {
 	const idFields = values(model.schema.paths)
 		.filter(path => path.options && path.options.ref)
 		.map(field => field.path);
-	return async function(input, context, info) {
-		const node = await input.id
-			? model.findById(fromGlobalId(input.id).id)
-			: model.create(resolveIdFields(input, idFields));
-
-		if (input.parent) {
-			const { id, type } = fromGlobalId(input.parent);
-			const parent = await options.models.find(({ name }) => name === type).findById(id);
-			parent[input.connectionName].addToSet(node);
-			await parent.save();
-
-			return {
-				parent,
-				node
-			};
-		} else
-			return {
-				node	
-			};
+	return function(input, context, info) {
+		return model.create(resolveIdFields(input, idFields));
 	}
 }
 export function updateMutation(model, options) {
@@ -47,45 +29,83 @@ export function updateMutation(model, options) {
 		.filter(path => path.options && path.options.ref)
 		.map(field => field.path);
 	return async function(input, context, info) {
-		const node = await model.findById(fromGlobalId(input.id).id);
+		const { id } = fromGlobalId(input.id);
+		const doc = await model.findById(id);
 
-		node.set(resolveIdFields(input, idFields));
-		await node.save();
+		doc.set(resolveIdFields(input, idFields));
+		await doc.save();
 
-		return node;
+		return doc;
 	}
 }
 export function removeMutation(model, options) {
 	return async function(input, context, info) {
-		const node = await model.findById(fromGlobalId(input.id).id);
+		const { id } = fromGlobalId(input.id);
+		const doc = await model.findById(id);
 
-		if (input.parent) {
-			const { id, type } = fromGlobalId(input.parent);
-			const parent = await options.models.find(({ name }) => name === type).findById(id);
-			parent[input.connectionName].pull(node);
-			
-			const owner = values(model.schema.paths)
-				.find(path => path.options && path.options.childPath === input.connectionName);
-
-			await Promise.all([
-				parent.save(),
-				owner && node.remove()
-			]);
-
-			return {
-				parent,
-				id: input.id
-			}
-		} else {
-			await node.remove();
-			return {
-				id: input.id
-			};
-		}
+		await doc.remove();
+		
+		return {
+			id: input.id
+		};
 	}
 }
 
-// not really used I believeth
+export function addToMutation(childModel, parentModel, connectionName, options) {
+	const owner = values(childModel.schema.paths)
+		.find(path => path.options && path.options.childPath === connectionName);
+	const idFields = values(childModel.schema.paths)
+		.filter(path => path.options && path.options.ref)
+		.map(field => field.path);
+	return async function(input, context, info) {
+		const { id: parentId } = fromGlobalId(input.parent);
+		
+		const [parent, child] = await Promise.all([
+			parentModel.findById(parentId),
+			input.id
+				? childModel.findById(fromGlobalId(input.id).id)
+				: childModel.create(resolveIdFields(input, idFields))
+		]);
+
+		if (owner) {
+			child.set(owner.path, parent);
+			await child.save();
+		}
+
+		parent[connectionName].addToSet(child);
+		await parent.save();
+
+		return {
+			parent,
+			child
+		};
+	}
+}
+export function removeFromMutation(childModel, parentModel, connectionName, options) {
+	const owner = values(childModel.schema.paths)
+		.find(path => path.options && path.options.childPath === connectionName);
+	return async function(input, context, info) {
+		const { id: parentId } = fromGlobalId(input.parent);
+		const { id: childId } = fromGlobalId(input.id);
+
+		const [parent, child] = await Promise.all([
+			parentModel.findById(parentId),
+			childModel.findById(childId)
+		]);
+
+		parent[connectionName].pull(child);
+		await Promise.all([
+			parent.save(),
+			owner && child.remove()
+		]);
+
+		return {
+			parent,
+			id: input.id
+		};
+	}
+}
+
 export function updateInArrayMutation(parentModel, connectionName, options) {
 	// const idFields = values(childModel.schema.paths)
 	// 	.filter(path => path.options && path.options.ref)

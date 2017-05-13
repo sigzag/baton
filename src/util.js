@@ -77,8 +77,8 @@ export function connection(nodes, params, getCursor = ({ id }) => id) {
 		return {
 			edges: [],
 			pageInfo: {
-				startCursor: null,
-				endCursor: null,
+				startCursor: params.before,
+				endCursor: params.after,
 				hasPreviousPage: false,
 				hasNextPage: false
 			}
@@ -87,10 +87,10 @@ export function connection(nodes, params, getCursor = ({ id }) => id) {
 		return {
 			edges: nodes.map(node => edge(node, getCursor)),
 			pageInfo: {
-				startCursor: nodes[0] && getCursor(nodes[0]),
-				endCursor: nodes[0] && getCursor(nodes[nodes.length - 1]),
-				hasPreviousPage: !!(+params.first - params.last),
-				hasNextPage: nodes.length === (+params.first || +params.last)
+				startCursor: params.before || nodes[0] && getCursor(nodes[0]),
+				endCursor: params.after || nodes[0] && getCursor(nodes[nodes.length - 1]),
+				hasPreviousPage: !!(params.last && params.last == nodes.length),
+				hasNextPage: !!(params.first && params.first == nodes.length)
 			}
 		};
 }
@@ -129,6 +129,8 @@ export function slice(array, { first, last, before, after }) {
 	return {
 		edges: nodes.map(node => ({ node, cursor: toBase64(node._id) })),
 		pageInfo: {
+			startCursor: nodes[0] && toBase64(nodes[0]._id),
+			endCursor: nodes[0] && toBase64(nodes[nodes.length - 1]._id),
 			hasPreviousPage: !!(last && last == nodes.length),
 			hasNextPage: !!(first && first == nodes.length)
 		}

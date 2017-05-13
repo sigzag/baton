@@ -3,11 +3,13 @@ import { connection as connectionOutput } from '../util';
 // Object resolvers
 export function object(model, name) {
 	return function(rootValue, args, context, info) {
+		console.log(info);
 		return model.findById(rootValue[name]);
 	}
 }
 export function objects(model, name) {
 	return async function(rootValue, args, context, info) {
+		console.log(info);
 		return model.find({ _id: { $in: rootValue[name] || [] } });
 	}
 }

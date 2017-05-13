@@ -62,7 +62,6 @@ export { nodeInterface };
 const viewer = { _type: 'viewer', id: 'viewer' };
 const idField = { name: 'id', type: new GraphQLNonNull(GraphQLID) };
 const nullIdField = { name: 'id', type: GraphQLID };
-const connectionNameField = { name: 'connectionName', type: GraphQLString };
 
 // Object resolvers
 function resolveObject(model, name) {
@@ -233,7 +232,7 @@ function inputType(type) {
 function fields(rootName, paths, options, input) {
 	return pathPairs(paths, options)
 		.reduce((fields, [name, path]) => {
-			fields[name] = field(path, name, `${rootName}${capitalize(name)}`, options, input);
+			fields[name] = field(path, name, `${rootName}${name}`, options, input);
 			return fields;
 		}, {});
 }
@@ -370,25 +369,15 @@ function modelMutations(model, viewer, options) {
 
 	const inputFields = fields(`${name}Input`, model.schema.paths, options, true);
 
-	return {
+	const mutations = {
 		[addName]: mutationWithClientMutationId({
 			name: addName,
-			inputFields: {
-				id: nullIdField,
-				parent: nullIdField,
-				connectionName: connectionNameField,
-				...inputFields
-			},
+			inputFields,
 			outputFields: {
-				parent: {
-					type: nodeType,
-					resolve: ({ parent }) => parent
-						? toNode(parent)
-						: viewer
-				},
+				viewer,
 				edge: {
 					type: edgeType,
-					resolve: ({ node }) => ({
+					resolve: node => ({
 						node: toNode(node),
 						cursor: idToCursor(node._id)
 					})
@@ -403,7 +392,8 @@ function modelMutations(model, viewer, options) {
 				...inputFields
 			},
 			outputFields: {
-				node: {
+				viewer,
+				updatedNode: {
 					type: nodeType,
 					resolve: toNode
 				}
@@ -413,22 +403,87 @@ function modelMutations(model, viewer, options) {
 		[removeName]: mutationWithClientMutationId({
 			name: removeName,
 			inputFields: {
-				id: idField,
-				parent: nullIdField,
-				connectionName: connectionNameField
+				id: idField
 			},
 			outputFields: {
-				parent: {
-					type: nodeType,
-					resolve: ({ parent }) => parent
-						? toNode(parent)
-						: viewer
-				},
+				viewer,
 				id: idField
 			},
 			mutateAndGetPayload: removeMutation(model, options)
 		})
 	};
+
+	for (let [fieldName, field] of toPairs(nodeType._typeConfig.fields)) {
+		const connection = Object.keys(connectionDefinition)
+			.map(key => connectionDefinition[key])
+			.find(({ connectionType }) => field.type === connectionType);
+		if (connection) {
+			const typeName = connection.edgeType._typeConfig.fields().node.type.name;
+			const childModel = options.models.find(({ modelName }) => modelName === typeName);
+			const addName = `Add${capitalize(fieldName)}To${capitalize(name)}`;
+			const removeName = `Remove${capitalize(fieldName)}From${capitalize(name)}`;
+			mutations[addName] = mutationWithClientMutationId({
+				name: addName,
+				inputFields: {
+					parent: idField,
+					id: nullIdField,
+					...(childModel
+						? fields(`${connection.edgeType.name}Input`, childModel.schema.paths, options, true)
+						: getInputFields(connection.edgeType._typeConfig.fields().node.type._typeConfig))
+				},
+				outputFields: {
+					parent: {
+						type: nodeType,
+						resolve: ({ parent }) => toNode(parent)
+					},
+					edge: {
+						type: connection.edgeType,
+						resolve: ({ child }) => ({
+							node: toNode(child),
+							cursor: idToCursor(child._id)
+						})
+					}
+				},
+				mutateAndGetPayload: childModel
+					? addToMutation(childModel, model, fieldName, options)
+					: addToArrayMutation(model, fieldName, options)
+			});
+			mutations[removeName] = mutationWithClientMutationId({
+				name: removeName,
+				inputFields: {
+					parent: idField,
+					id: idField
+				},
+				outputFields: {
+					parent: {
+						type: nodeType,
+						resolve: ({ parent }) => toNode(parent)
+					},
+					id: idField
+				},
+				mutateAndGetPayload: childModel
+					? removeFromMutation(childModel, model, fieldName, options)
+					: removeFromArrayMutation(model, fieldName, options)
+			});
+			if (!childModel) {
+				const updateName = `Update${capitalize(fieldName)}In${capitalize(name)}`;
+				mutations[updateName] = mutationWithClientMutationId({
+					name: updateName,
+					inputFields: getInputFields(connection.edgeType._typeConfig.fields().node.type._typeConfig),
+					outputFields: {
+						viewer,
+						updatedNode: {
+							type: connection.edgeType._typeConfig.fields().node.type,
+							resolve: toNode
+						}
+					},
+					mutateAndGetPayload: updateMutation(model, options)
+				});
+			}
+		}
+	}
+	
+	return mutations;
 }
 
 // Root fields & default

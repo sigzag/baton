@@ -10,7 +10,8 @@ import {
 	dirname
 } from 'path';
 
-import { buildASTSchema } from 'graphql/utilities';
+import { buildASTSchema, printSchema } from 'graphql/utilities';
+export { printSchema };
 import { parse } from 'graphql/language';
 
 import scalars from './scalars';
@@ -44,9 +45,8 @@ function resolveType(node) {
 }
 
 const defaultSchemaDefinitions = `
-	scalar Cursor
 	interface Node { id: ID! name: String }
-	type PageInfo { startCursor: Cursor endCursor: Cursor hasPreviousPage: Boolean! hasNextPage: Boolean! count: Int! }
+	type PageInfo { startCursor: Cursor endCursor: Cursor hasPreviousPage: Boolean hasNextPage: Boolean count: Int! }
 	
 	type Geo { name: String latitude: Float! longitude: Float! latitudeDelta: Float longitudeDelta: Float }
 	input GeoInput { name: String latitude: Float! longitude: Float! latitudeDelta: Float longitudeDelta: Float }
@@ -88,20 +88,16 @@ function readSchema(path, options) {
 export default function(path, options = {}) {
 	const schemaString = readSchema(resolve(dirname(callsite()[1].getFileName()), path), options);
 
-	const connectionTypes = schemaString.match(/Connection\(.*?\)/g).map(type => `${type.slice(11,-1)}Connection`);
+	const connectionTypes = uniq(schemaString.match(/Connection\(.*?\)/g).map(type => `${type.slice(11,-1)}Connection`));
 	const includedScalars = scalars
 		.concat(options.scalars || [])
-		.filter(type => type.name === 'Cursor' || type.name === 'File' || new RegExp(`:\\s*${type.name}[!|\\}|\\s]`).test(schemaString));
+		.filter(type => type.name === 'ID' || type.name === 'Cursor' || type.name === 'File' || new RegExp(`:\\s*${type.name}[!|\\}|\\s]`).test(schemaString));
 	const includedEnums = (options.enums || []);
-	
-	// WARNING
-	//	- Connection should have NonNull(PageInfo)
-	//	- ConnectionEdge should have NonNull(Type) && NonNull(Cursor)
-	//	These were changed cuz the alpha (rc actually) relay 1.0 has a bug
+
 	const ast = parse(`
 		${defaultSchemaDefinitions}
-		${connectionTypes.map(type => `type ${type}Edge { node: ${type.slice(0,-10)} cursor: Cursor }`)}
-		${connectionTypes.map(type => `type ${type} { edges: [${type}Edge]! pageInfo: PageInfo }`)}
+		${connectionTypes.map(type => `type ${type}Edge { node: ${type.slice(0,-10)}! cursor: Cursor! }`)}
+		${connectionTypes.map(type => `type ${type} { edges: [${type}Edge]! pageInfo: PageInfo! }`)}
 		${includedScalars.map(type => `scalar ${type.name}`)}
 		${includedEnums.map(type => `enum ${type.name} { PLACEHOLDER }`)}
 		${schemaString.replace(/Connection\((.*?)\)/g, (match, type) => `${type}Connection`)}
@@ -134,7 +130,7 @@ export default function(path, options = {}) {
 			.map(({ arguments: [input] }) => baseType(input))
 			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
 		for (let def of uniq(inputs))
-			def.fields.push(clientMutationIdInputValue);
+			def && def.fields.push(clientMutationIdInputValue);
 		// Add clientMutationId field to output types
 		const outputs = ast.definitions
 			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Mutation')
@@ -142,7 +138,7 @@ export default function(path, options = {}) {
 			.map(baseType)
 			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
 		for (let def of uniq(outputs))
-			def.fields.push(clientMutationIdOutputValue);
+			def && def.fields.push(clientMutationIdOutputValue);
 	} {
 		// Add clientSubscriptionId field to input types
 		const inputs = ast.definitions
@@ -152,7 +148,7 @@ export default function(path, options = {}) {
 			.map(({ arguments: [input] }) => baseType(input))
 			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
 		for (let def of uniq(inputs))
-			def.fields.push(clientSubscriptionIdInputValue);
+			def && def.fields.push(clientSubscriptionIdInputValue);
 		// Add clientSubscriptionId field to output types
 		const outputs = ast.definitions
 			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Subscription')
@@ -160,7 +156,7 @@ export default function(path, options = {}) {
 			.map(baseType)
 			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
 		for (let def of uniq(outputs))
-			def.fields.push(clientSubscriptionIdOutputValue);
+			def && def.fields.push(clientSubscriptionIdOutputValue);
 	}
 
 	// Build schema and

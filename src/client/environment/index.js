@@ -5,7 +5,8 @@ import {
 	Store,
 	Observable,
 	createOperationSelector,
-	getOperation
+	getOperation,
+	QueryResponseCache
 } from 'relay-runtime';
 import createHandlerProvider from './createHandlerProvider';
 // import createFetchQuery from './createFetchQuery';
@@ -20,7 +21,9 @@ import createSendSubscription from './createSendSubscription';
 // 	);
 // }
 
-export default function createEnvironment({ token, host, disableSubscription, ...options}) {
+const cache = new QueryResponseCache({size: 250, ttl: 60 * 5 * 1000 });
+
+export default function createEnvironment({ token, host, subscriptionHost, disableSubscription, ...options}) {
 	let counter = 0;
 	function fetchQuery(
 		operation,
@@ -28,6 +31,7 @@ export default function createEnvironment({ token, host, disableSubscription, ..
 		cacheConfig = {},
 		uploadables
 	) {
+		const queryID = operation.id;
 		// const selector = createOperationSelector(getOperation(operation), variables);
 		// const snapshot = environment.lookup(selector.fragment);
 
@@ -40,6 +44,10 @@ export default function createEnvironment({ token, host, disableSubscription, ..
 			variables.input.clientMutationId = `clientMutationId:${counter++}`;
 
 		return new Observable(function(sink) {
+			const data = cache.get(queryID, variables);
+			if (data)
+				sink.next(data);
+
 			try {
 			// if (snapshot && snapshot.data) {
 			// 	// console.log('sinkin', snapshot);
@@ -60,7 +68,7 @@ export default function createEnvironment({ token, host, disableSubscription, ..
 				body.append(key, uploadables[key]);
 			body.append('variables', JSON.stringify(variables));
 			body.append('query', operation.text);
-			
+
 			fetch(host, {
 				method: 'POST',
 				headers: {
@@ -68,7 +76,14 @@ export default function createEnvironment({ token, host, disableSubscription, ..
 					'Authorization': `Bearer ${token}`
 				},
 				body
-			}).then((response) => response.json()).then((value) => { sink.next(value); sink.complete(); }, sink.error);
+			}).then((response) => response.json()).then((data) => {
+				// console.log(data);
+				cache.set(queryID, variables, data);
+				setTimeout(() => {
+					sink.next(data);
+					sink.complete();
+				}, 500);
+			}, sink.error);
 		} catch (e) {
 			console.log('err', e, operation);
 		}
@@ -81,7 +96,7 @@ export default function createEnvironment({ token, host, disableSubscription, ..
 			fetchQuery,
 			disableSubscription
 				? null
-				: createSendSubscription(host, token)
+				: createSendSubscription(subscriptionHost || host, token)
 		),
 		store: new Store(new RecordSource()),
 	});

@@ -387,30 +387,6 @@ function rootFields(models, options) {
 	};
 }
 
-/*
-	models [{
-		name,
-		fields [{
-			name
-			type {
-				kind
-				model (node, connection, list)
-				values (enum)
-			}
-			resolve
-		}]
-		indexes { name: type, ... }
-		interfaces [model, ...]
-		resolveType(objectTypes) => objectType
-	}]
-	options {
-		resolvers {
-			resolveObject
-			resolveConnection
-		}
-	}
-*/
-
 export default function(models, options = {}) {
 	options = {
 		mutations: {},

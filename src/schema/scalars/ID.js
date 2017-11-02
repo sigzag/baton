@@ -1,7 +1,6 @@
 import { GraphQLScalarType } from 'graphql';
 import { GraphQLError } from 'graphql/error';
 import { Kind } from 'graphql/language';
-import { toBase64, fromBase64 } from '../../util';
 import { fromGlobalId } from 'graphql-relay';
 
 import { Schema } from 'mongoose';
@@ -12,7 +11,7 @@ export default new GraphQLScalarType({
 		if (!value)
 			throw new TypeError('Field error: value is an invalid (null) ID');
 
-		return toBase64(value);
+		return value;
 	},
 	parseValue(value) {
 		if (!value)
@@ -22,7 +21,7 @@ export default new GraphQLScalarType({
 
 		const { type, id } = fromGlobalId(value);
 		if (!id) return null;
-		return { type, toString() { return id; } };
+		return { type, id, toString() { return id; } };
 	},
 	parseLiteral(ast) {
 		if (!ast.value)
@@ -32,6 +31,6 @@ export default new GraphQLScalarType({
 
 		const { type, id } = fromGlobalId(ast.value);
 		if (!id) return null;
-		return { type, toString() { return id; } };
+		return { type, id, toString() { return id; } };
 	}
 });

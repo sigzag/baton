@@ -127,6 +127,7 @@ export default function(path, options = {}) {
 		const inputs = ast.definitions
 			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Mutation')
 			.fields
+			.filter(({ arguments: [input] }) => input)
 			.map(({ arguments: [input] }) => baseType(input))
 			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
 		for (let def of uniq(inputs))

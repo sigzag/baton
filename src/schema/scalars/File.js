@@ -10,10 +10,10 @@ export default new GraphQLScalarType({
 		return value.toJSON();
 	},
 	parseValue(value) {
-		if (!value.path)
+		if (!value.buffer)
 			throw new TypeError('Field error: value is an invalid File');
 
-		return value.path;
+		return value;
 	},
 	parseLiteral(ast) {
 		if (ast.kind !== Kind.STRING)

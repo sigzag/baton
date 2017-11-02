@@ -16,6 +16,7 @@ export default class extends QueryRenderer {
 		// if (!snapshot || !snapshot.data)
 			return result;
 
+
 		return { error: null, props: snapshot.data, retry: null };
 	}
 }

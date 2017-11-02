@@ -1,6 +1,6 @@
 {
   "name": "relay-baton",
-  "version": "2.1.1",
+  "version": "2.1.4",
   "description": "Mongoose & just regular string relay schema builder & helpers & tidbits & stuffs, ooh, and relay subscriptions",
   "main": "lib/index.js",
   "scripts": {

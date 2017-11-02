@@ -55,6 +55,47 @@ function generateModel(paths, getModel, skip) {
 	};
 }
 
+function generateNodeType(source, name = source.modelName) {
+	if (!name)
+		throw new Error(`Missing name for ${source}`);
+
+	const paths = isPlainObject(source)
+		? Object.entries(source)
+		: [...Object.entries(source.paths), ...Object.entries(source.virtuals)];
+	
+	return {
+		name,
+		source,
+		paths,
+		fields: fields(paths),
+		interfaces: source.baseModelName
+			? [source.baseModelName]
+			: [],
+		resolveType
+	};
+	return {
+		name,
+		fields: (isPlainObject(schema)
+			? Object.entries(schema)
+			: [...Object.entries(schema.paths), ...Object.entries(schema.virtuals)]),
+	}
+}
+
+/*
+ObjectId	=>	ObjectId							=>	.options.ref ? node : id
+[ObjectId]	=>	SchemaArray							=>	.caster.options.ref ? [node] : [id]
+			
+{}			=>	{}	(paths basically)				=>	is schema => *node
+Schema		=>	SchemaType							=>	.schema => *node
+
+[{}]		=>	DocumentArray [EmbeddedDocument]	=>	.schema => [*node]
+[Schema]	=>	DocumentArray [EmbeddedDocument]	=>	.schema => [*node]
+
+Mixed		=>	Mixed								=>	JSON
+[Mixed]		=>	SchemaArray [Mixed]					=>	JSON
+
+*/
+
 function getKind(path) {
 	if (isPlainObject(path))
 		return 'object';
@@ -83,6 +124,7 @@ function getKind(path) {
 	}
 }
 function getField(name, path, getModel, skip) {
+	console.log(path);
 	if (isPlainObject(path))
 		return {
 			name,
@@ -117,7 +159,7 @@ function getField(name, path, getModel, skip) {
 				kind: 'node',
 				model: getModel(path.node || path.options.ref)
 			},
-			resolve: resolveObject(name, getModel(path.node || path.options.ref).source)
+			resolve: resolveObject(name, getModel(path.node && path.options.ref).source)
 		};
 	else if (path.list || path.caster && path.caster.options && path.caster.options.list)
 		return {
@@ -126,10 +168,10 @@ function getField(name, path, getModel, skip) {
 				kind: 'list',
 				model: {
 					kind: 'node',
-					model: getModel(path.list || path.caster.options.ref)
+					model: getModel(path.list && path.caster.options.ref)
 				}
 			},
-			resolve: resolveList(name, getModel(path.list || path.caster.options.ref).source)
+			resolve: resolveList(name, getModel(path.list && path.caster.options.ref).source)
 		};
 	else if (path.connection || path.caster && path.caster.options && path.caster.options.connection) {
 		let model = getModel(path.connection);
@@ -188,7 +230,7 @@ export default function(models, options = {}) {
 		name: source.modelName,
 		fields: [],
 		indexes: pathPairs(paths(source.schema), skip)
-			.filter(([, { options: { index } }]) => index)
+			.filter(([, path]) => path && path.options && path.options.index)
 			.reduce(
 				(indexes, [name, path]) => ({ ...indexes, [name]: { kind: getKind(path) } }),
 				{}

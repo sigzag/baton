@@ -1,12 +1,20 @@
-import { toPairs, isPlainObject } from 'lodash';
+import { toPairs, isPlainObject, mapValues, curryRight } from 'lodash';
+import { toGlobalId, fromGlobalId } from 'graphql-relay';
+
+export { toGlobalId, fromGlobalId };
 
 // Relay resolver decorators
 export function mutationWithClientId(mutation) {
 	return async ({ input }, context, info) => ({ clientMutationId: input.clientMutationId, ...(await mutation(input, context, info)) })
 }
 export function subscriptionWithClientId(subscription) {
-	return async (args, context, info) => ({ clientSubscriptionId: args.input.clientSubscriptionId, ...(await subscription(args, context, info)) })
+	return async ({ input }, context, info) => ({ clientSubscriptionId: input.clientSubscriptionId, ...(await subscription(input, context, info)) })
 }
+
+// Curried versions
+
+export const mutationsWithClientId = curryRight(mapValues)(mutationWithClientId);
+export const subscriptionsWithClientId = curryRight(mapValues)(subscriptionWithClientId);
 
 // Relay connection helpers
 export function edge(node, getCursor = ({ id }) => id) {
@@ -25,7 +33,7 @@ export function connection(nodes, params, getCursor = ({ id }) => id) {
 				startCursor: params.before,
 				endCursor: params.after,
 				hasPreviousPage: false,
-				hasNextPage: false
+				hasNextPage: false,
 			}
 		};
 	else
@@ -35,7 +43,7 @@ export function connection(nodes, params, getCursor = ({ id }) => id) {
 				startCursor: params.before || nodes[0] && getCursor(nodes[0]),
 				endCursor: params.after || nodes[0] && getCursor(nodes[nodes.length - 1]),
 				hasPreviousPage: !!(params.last && params.last == nodes.length),
-				hasNextPage: !!(params.first && params.first == nodes.length)
+				hasNextPage: !!(params.first && params.first == nodes.length),
 			}
 		};
 }
@@ -61,14 +69,14 @@ export function toNode(doc) {
 	return doc.toObject({ node: true });
 }
 
-export function slice(array, { first, last, before, after }) {
+export function slice(array, { first, last, before, after }, compare = ({ id }, cursor) => id === cursor) {
 	if (after) {
-		const index = array.findIndex(({ id }) => id === after);
+		const index = array.findIndex(node => compare(node, after));
 		if (~index)
 			array = array.slice(index + 1);
 	}
 	if (before) {
-		const index = array.findIndex(({ id }) => id === before);
+		const index = array.findIndex(node => compare(node, before));
 		if (~index)
 			array = array.slice(0, index);
 	}

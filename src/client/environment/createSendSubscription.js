@@ -23,7 +23,7 @@ export default function(uri, token) {
 			return console.warn('Gave up trying to reconnect websocket after ' + connectionAttempts + ' tries.');
 		}
 		
-		socket = new WebSocket(`${uri.replace(/^https?/, 'ws')}${token ? `?jwt_token=${token}` : ''}`);
+		socket = new WebSocket(`${uri.replace(/^http/, 'ws')}${token ? `?jwt_token=${token}` : ''}`);
 		socket.onopen = onconnect;
 		socket.onmessage = onmessage;
 		socket.onclose = onclose;
@@ -66,7 +66,7 @@ export default function(uri, token) {
 	}
 	
 	connect();
-	return function sendSubscription(
+	function sendSubscription(
 		operation,
 		variables,
 		cacheConfig,
@@ -93,4 +93,6 @@ export default function(uri, token) {
 			}
 		};
 	}
+
+	return sendSubscription;
 }

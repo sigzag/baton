@@ -6,9 +6,12 @@ import {
 	execute,
 	valueFromAST
 } from 'graphql';
+import {
+	getVariableValues
+} from 'graphql/execution/values';
 
-export default function({ formatError = String, server, source, schema, rootValue, getContext = () => ({}) }) {
-	const wss = new Server({ server });
+export default function({ formatError = String, server, port, source, schema, rootValue, getContext = () => ({}) }) {
+	const wss = new Server({ server, port });
 	wss.on('error', function(err) {
 		console.log('ws error on ' + new Date + ':\n' + err.stack + '\n');
 	});
@@ -29,17 +32,13 @@ export default function({ formatError = String, server, source, schema, rootValu
 			const subField = schema.getSubscriptionType().getFields();
 			const rootField = query.definitions[0].selectionSet.selections[0];
 			const operationName = rootField.name.value;
-			const operationArgs = rootField.arguments.reduce((args, arg) => {
-				const def = subField[operationName].args.find(def => def.name === arg.name.value);
-				args[def.name] = valueFromAST(arg.value, def.type, variables);
-				return args;
-			}, {});
-
+			const operationArgs = getVariableValues(schema, query.definitions[0].variableDefinitions, variables);
+			
 			const { events, operation, ...common } = await rootValue[operationName](operationArgs, context);
 
 			async function listener(data) {
 				try {
-					const result = await operation({ ...operationArgs, ...data }, context);
+					const result = await operation(data, operationArgs, context);
 					if (result) {
 						const rootValue = {
 							[operationName]: {

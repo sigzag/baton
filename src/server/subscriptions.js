@@ -34,7 +34,7 @@ export default function({ formatError = String, server, port, source, schema, ro
 			const operationName = rootField.name.value;
 			const operationArgs = getVariableValues(schema, query.definitions[0].variableDefinitions, variables);
 			
-			const { events, operation, ...common } = await rootValue[operationName](operationArgs, context);
+			const { log, events, operation, ...common } = await rootValue[operationName](operationArgs, context);
 
 			async function listener(data) {
 				try {
@@ -58,6 +58,17 @@ export default function({ formatError = String, server, port, source, schema, ro
 			subscriptions.set(id, { events, listener });
 			for (let event of events)
 				source.addListener(event, listener);
+
+			if (log) {
+				const payloads = await Promise.all(log.map((result) => execute(schema, query, {
+					[operationName]: {
+						...result,
+						...common,
+					},
+				}, null, variables)));
+				for (let payload of payloads)
+					socket.send(JSON.stringify({ id, ...payload }));
+			}
 		}
 		function unsubscribe(id) {
 			if (subscriptions.has(id)) {

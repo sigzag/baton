@@ -1,6 +1,5 @@
 import React from 'react';
-import { graphql } from 'react-relay';
-import { pick, reduce, isPlainObject } from 'lodash';
+import { pick } from 'lodash';
 import QueryRenderer from './QueryRenderer';
 
 const QueryContainer = ({ Container, query, variables = {}, cacheConfig, ...passProps }, { relay }) => (

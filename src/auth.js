@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { toPairs, isPlainObject, mapValues, curryRight } from 'lodash';
 
-export function parseToken(token, secret) {
+export function defaultParseToken(token, secret) {
 	if (!token) {
 		return Promise.reject(new Error('Missing credentials', { message: 'Missing token' }));
 	}
@@ -14,35 +14,38 @@ export function parseToken(token, secret) {
 		))
 	);
 }
-export function parseURL(url, secret) {
-	const token = (url.match(/jwt_token\=([^&]+)/) || [])[1];
+
+export function getTokenFromURL(req) {
+	const token = (req.url.match(/jwt_token\=([^&]+)/) || [])[1];
 	if (!token)
 		throw new Error('No authorization header', { message: 'Authorization header missing' });
-	
-	return parseToken(token, secret);
+	return token;
 }
-export function parseHeaders(headers, secret) {
-	if (!headers || !headers.authorization) {
+export function getTokenFromHeaders(req) {
+	if (!req.headers || !req.headers.authorization) {
 		throw new Error('No authorization header', { message: 'Authorization header missing' });
 	}
 	
-	const [scheme, token] = headers.authorization.split(' ');
+	const [scheme, token] = req.headers.authorization.split(' ');
 	if (scheme !== 'Bearer') {
 		throw new Error('Bad credentials', { message: 'Format is authorization: Bearer [token]' });
 	}
-	
-	return parseToken(token, secret);
+
+	return token;
 }
 
 // Middleware
 export function authMiddleware(options = {}) {
-	const { secret, url } = options;
+	const {
+		secret,
+		url,
+		parseToken = defaultParseToken
+	} = options;
+
 	return async function auth(req, res, next) {
 		try {
-			req.user = await (url
-				? parseURL(req.url, secret)
-				: parseHeaders(req.headers, secret)
-			);
+			const token = (url ? getTokenFromURL : getTokenFromHeaders)(req);
+			req.user = await parseToken(token, secret);
 		} catch (e) {
 			req.authError = e;
 		}
@@ -77,9 +80,4 @@ export const authenticateSubscriptions = curryRight(mapValues)(authenticateSubsc
 // Signing token
 export function signToken(data, secret) {
 	return jwt.sign(data, secret);
-}
-
-// Encrypting password somewhat standardly for once
-export function encryptPassword(/* password */) {
-
 }

@@ -70,7 +70,7 @@ export default function({ formatError = String, server, port, source, schema, ro
 					socket.send(JSON.stringify({ id, ...payload }));
 			}
 		}
-		function unsubscribe(id) {
+		function unsubscribe({ id }) {
 			if (subscriptions.has(id)) {
 				const { events, listener } = subscriptions.get(id);
 				for (let event of events)

@@ -1,8 +1,8 @@
-import { Observable } from 'relay-runtime';
+import { Observable } from 'rxjs/Observable';
 import Backoff from 'backo';
 
 // Key functionality
-export function sendSubsription({ min = 100, max = 20000 }) {
+export const sendSubscription = (function({ min = 100, max = 20000 }) {
 	const sockets = {};
 	const subscriptions = {};
 	const backoff = new Backoff({ min, max });
@@ -68,7 +68,7 @@ export function sendSubsription({ min = 100, max = 20000 }) {
 	}
 
 	return function sendSubscription(subscription) {
-		return new Observable(async (sink) => {
+		return new Observable((sink) => {
 			subscription.sink = sink;
 			subscriptions[subscription.id] = subscription;
 			
@@ -84,10 +84,11 @@ export function sendSubsription({ min = 100, max = 20000 }) {
 			};
 		});
 	};
-}
-export function sendQuery() {
+}());
+export const sendQuery = (function () {
 	return function sendQuery({ operation, variables, uploadables, host, context }) {
-		return Observable.create(async function(sink) {
+		console.log('sendQuery');
+		return new Observable(async function(sink) {
 			if (variables.hasOwnProperty('input'))
 				variables.input.clientMutationId = `clientMutationId:${counter++}`;
 			
@@ -108,6 +109,8 @@ export function sendQuery() {
 				...context,
 				body,
 			});
+
+			console.log(response);
 	
 			if (response.status !== 200) {
 				sink.error(await response.text());
@@ -117,17 +120,18 @@ export function sendQuery() {
 			}
 		});
 	}
-}
+}());
 
 // We like AUTHENTIC behaviours
 export function authHeader(token) {
-	return (query, forward) => Observable.create(async (sink) => {
+	return (query, forward) => new Observable(async (sink) => {
+		console.log(query.id, 'authHeader');
 		query.context.headers.authorization = `Bearer ${await token()}`;
 		forward(query).subscribe(sink);
 	});
 }
 export function authQuerystring(token) {
-	return (query, forward) => Observable.create(async (sink) => {
+	return (query, forward) => console.log(query.id, 'authQS') || new Observable(async (sink) => {
 		query.host += `?token=${await token()}`;
 		forward(query).subscribe(sink);
 	});
@@ -135,18 +139,23 @@ export function authQuerystring(token) {
 
 // Errors aren't neccessarily the end of the world
 export function retryOnError(fn) {
-	return (query, forward) => Observable.create((sink) => forward(query).subscribe({
+	return (query, forward) => forward(query)
+		.catch((err) => )
+		.
+	return (query, forward) => console.log(query.id, 'retryOnError', fn) || new Observable((sink) => forward(query).subscribe({
 		...sink,
 		async error() {
+			console.log(query.id, 'retry on error', arguments);
 			await fn();
 			forward(query).subscribe(sink);
 		}
 	}));
 }
 export function callOnError(fn) {
-	return (query, forward) => Observable.create((sink) => forward(query).subscribe({
+	return (query, forward) => console.log(query.id, 'callOnError', fn) || new Observable((sink) => console.log('sourced') || forward(query).subscribe({
 		...sink,
 		async error(...args) {
+			console.log(query.id, 'call on error', arguments);
 			await fn();
 			sink.error(...args);
 		}
@@ -155,24 +164,20 @@ export function callOnError(fn) {
 
 // Maybe there's some data there already?
 export function cache({ get, set }) {
-	return (query, forward) => Observable.create((sink) => {
+	return (query, forward) => {
+		let observable = forward(query);
+		
 		const cached = get(query.id, query.variables);
 		if (cached)
-			sink.next(cached);
-
-		forward(query).subscribe({
-			...sink,
-			next(data) {
-				cache.set(query.id, query.variables, data);
-				sink.next(data);
-			},
-		});
+			observable = observable.startWith(cached);
+		
+		return observable.forEach((data) => set(query.id, query.variables, data);
 	});
 }
 
 // Waaaait for it
 export function waitFor(fn) {
-	return (query, forward) => Observable.create(async (sink) => {
+	return (query, forward) => console.log(query.id, 'waitFor', fn) || new Observable(async (sink) => {
 		await fn();
 		forward(query).subscribe(sink);
 	});
@@ -180,7 +185,7 @@ export function waitFor(fn) {
 
 // Without this the whole thang falls apart
 export function withHost(host) {
-	return (query, forward) => forward({ ...query, host });
+	return (query, forward) => console.log(query.id, 'withHost', host) || forward({ ...query, host });
 }
 
 // And exxxecute

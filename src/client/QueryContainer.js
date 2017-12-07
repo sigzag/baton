@@ -6,10 +6,13 @@ const QueryContainer = ({ Container, query, variables = {}, cacheConfig, ...pass
 	<QueryRenderer
 		environment={relay.environment}
 		cacheConfig={cacheConfig}
+		dataFrom="STORE_THEN_NETWORK"
 		query={query}
 		variables={pick(variables, query.modern().fragment.argumentDefinitions.map(({ name }) => name))}
-		render={({ error, props = {} }) => {
-			const fragments = query.modern().fragment.selections.reduce((fragments, { name }) => ({ ...fragments, [name]: props && props[name] || null }), {});
+		render={({ error, props = {}, retry }) => {
+			const fragments = query.modern().fragment.selections
+				.map((selection) => selection.kind === 'Condition' ? selection.selections[0] : selection)
+				.reduce((fragments, { name }) => ({ ...fragments, [name]: props && props[name] || null }), {});
 
 			return (
 				<Container
@@ -17,6 +20,7 @@ const QueryContainer = ({ Container, query, variables = {}, cacheConfig, ...pass
 					variables={variables}
 					loading={!error && !props}
 					error={error}
+					retry={retry}
 					{...passProps}
 					{...fragments}
 					viewer={fragments.viewer}

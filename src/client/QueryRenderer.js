@@ -4,19 +4,19 @@ export default class extends QueryRenderer {
 	_fetch(operation, cacheConfig = {}) {
 		const { environment } = this._relayContext;
 
-		// if (cacheConfig.forceRetain)
-		// 	environment.retain(operation.root);
+		const snapshot = environment.lookup(operation.fragment);
+		environment.retain(operation.root);
 
-		// const snapshot = environment.lookup(operation.fragment);
-		// console.log(snapshot);
-		// if (environment.check(operation.root))
-		// 	return { error: null, props: snapshot.data, retry: null };
-	
-		const result = super._fetch(operation, cacheConfig);
-		// if (!snapshot || !snapshot.data)
-			return result;
+		if (environment.check(operation.root))
+			return { props: snapshot.data, error: null, retry: null };
 
+		const props = snapshot.data && Object.values(snapshot.data).find((x) => x) && snapshot.data;
+		return super._fetch(operation, cacheConfig) || (props ? { props, error: null, retry: null } : null);
+	}
 
-		return { error: null, props: snapshot.data, retry: null };
+	shouldComponentUpdate(nextProps, nextState) {
+		return (
+			super.shouldComponentUpdate(nextProps, nextState)
+		);
 	}
 }

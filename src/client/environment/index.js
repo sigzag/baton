@@ -10,17 +10,21 @@ import createSendSubscription from './createSendSubscription';
 
 export default function createEnvironment(options = {}) {
 	const {
-		fetchStack,
-		subscriptionStack,
+		query,
+		mutate,
+		subscribe,
 	} = options;
 
+	const store = new Store(new RecordSource());
+	const network = Network.create(
+		createFetchQuery(query, mutate),
+		subscribe && createSendSubscription(subscribe)
+	);
+
 	const environment = new Environment({
+		store,
+		network,
 		handlerProvider: createHandlerProvider(options),
-		network: Network.create(
-			createFetchQuery(fetchStack),
-			subscriptionStack && createSendSubscription(subscriptionStack)
-		),
-		store: new Store(new RecordSource()),
 	});
 
 	return environment;

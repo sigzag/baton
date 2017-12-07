@@ -1,30 +1,52 @@
-import { exectueStack } from './middleware';
-
 let counter = 0;
-export default function(stack) {
+
+async function send(query) {
+	const response = await fetch(query.url, query.context);
+	if (response.status !== 200)
+		throw response;
+	return response.json();
+};
+
+export default function(query, mutate) {
 	return function fetchQuery(
 		operation,
 		variables,
 		cacheConfig = {},
 		uploadables
 	) {
-		const id = `clientMutationId:${counter++}`;
-		if (variables.hasOwnProperty('input'))
-			variables.input.clientMutationId = id;
+		if (variables.hasOwnProperty('input')) {
+			variables.input.clientMutationId = `clientMutationId:${counter++}`;
+		}
 
-		exectueStack(stack, {
-			id: operation.id,
+		const body = new FormData();
+		if (uploadables) {
+			for (let key in uploadables) {
+				body.append(key, {
+					uri: uploadables[key].uri,
+					type: uploadables[key].type,
+					name: uploadables[key].name || 'test.jpeg',
+				});
+			}
+		}
+		body.append('variables', JSON.stringify(variables));
+		body.append('query', operation.text);
+
+		const operationConfig = {
+			id: operation.name,
 			operation,
 			variables,
 			cacheConfig,
 			uploadables,
-			host: '', // expects to be set
 			context: {
 				method: 'POST',
-				headers: {
-					'Accept': 'application/json',
-				},
+				headers: { 'Accept': 'application/json' },
+				body,
 			},
-		});
+		};
+
+		if (operation.fragment.type === 'Mutation')
+			return mutate(operationConfig, send);
+		else
+			return query(operationConfig, send);
 	}
 }

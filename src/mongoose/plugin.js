@@ -112,7 +112,7 @@ export default function(schema, options = {}) {
 		if (id) {
 			conditions.push({ _id: toObjectId(id) });
 		}
-	
+
 		return this
 			.findOne({ $and: conditions }, null, { sort: index, ...options })
 			.then(toNode);
@@ -163,7 +163,7 @@ export default function(schema, options = {}) {
 			};
 		} else
 			Object.defineProperty(Class.prototype, name, { get() {
-				return this._get(name).then(value => typeof transform === 'function' ? transform(value) : value);
+				return Promise.resolve(this._get(name)).then(value => typeof transform === 'function' ? transform(value) : value);
 			} });
 	}
 	for (let [name, def] of Object.entries(schema.virtuals)) {
@@ -185,7 +185,6 @@ export default function(schema, options = {}) {
 	schema.options.toObject.transform = function(doc, object, options) {
 		if (originalTransform)
 			object = originalTransform(object);
-		
 		if (options && options.node)
 			return new Class(doc, object);
 

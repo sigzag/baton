@@ -34,47 +34,23 @@ export default function({ formatError = String, server, port, source, schema, ro
 			const operationName = rootField.name.value;
 			const operationArgs = getVariableValues(schema, query.definitions[0].variableDefinitions, variables);
 			
-			const { log, events, operation, ...common } = await rootValue[operationName](operationArgs, context);
+			// Subscribe
+			const observable = await rootValue[operationName](operationArgs, context);
 
-			async function listener(data) {
-				try {
-					const result = await operation(data, operationArgs, context);
-					if (result) {
-						const rootValue = {
-							[operationName]: {
-								...result,
-								...common
-							}
-						};
-						const payload = await execute(schema, query, rootValue, null, variables);
-						socket.send(JSON.stringify({ id, ...payload }));
-					}
-				} catch(e) {
-					console.log(e);
-					socket.send(JSON.stringify({ id, errors: [formatError(e)] }))
-				}
-			}
+			const subscription = observable.subscribe(async (data) => {
+				const rootValue = {
+					[operationName]: data,
+				};
+				const payload = await execute(schema, query, rootValue, null, variables);
+				socket.send(JSON.stringify({ id, ...payload }));
+			});
 
-			subscriptions.set(id, { events, listener });
-			for (let event of events)
-				source.addListener(event, listener);
-
-			if (log) {
-				const payloads = await Promise.all(log.map((result) => execute(schema, query, {
-					[operationName]: {
-						...result,
-						...common,
-					},
-				}, null, variables)));
-				for (let payload of payloads)
-					socket.send(JSON.stringify({ id, ...payload }));
-			}
+			// Store the subscription
+			subscriptions.set(id, subscription);
 		}
 		function unsubscribe({ id }) {
 			if (subscriptions.has(id)) {
-				const { events, listener } = subscriptions.get(id);
-				for (let event of events)
-					source.removeListener(event, listener);
+				subscriptions.get(id).unsubscribe();
 				subscriptions.delete(id);
 			}
 		}
@@ -90,10 +66,9 @@ export default function({ formatError = String, server, port, source, schema, ro
 					break;
 			}
 		});
-		socket.on('disconnect', () => {
-			for (let { events, listener } of subscriptions.values())
-				for (let event of events)
-					source.removeListener(event, listener);
+		socket.on('close', () => {
+			for (let subscription of subscriptions.values())
+				subscription.unsubscribe();
 		});
 	});
 }

@@ -1,57 +1,46 @@
 if (!window.navigator.userAgent)
 	window.navigator.userAgent = 'ReactNative';
 
-import { Observable } from 'rxjs'
-import 'rxjs/add/operator/do';
+import { Observable, Subject } from 'rxjs';
+// import { ReplaySubject } from 'rxjs/ReplaySubject';
+import { ReplaySubject } from 'rxjs/ReplaySubject';
 import 'rxjs/add/operator/filter';
 
 const send = (function() {
-	const sockets = {};
+	const subscribers = {};
 
-	function connect(url) {
+	return function send(query) {
+		const { url } = query;
 		const host = url.split('?')[0];
 
-		if (host in sockets) {
-			return sockets[host];
-		}
+		if (host in subscribers)
+			return subscribers[host](query);
 
 		const socket = new WebSocket(url);
-		const subs = {};
+		const pending = new ReplaySubject();
+		const messages = new Subject();
 	
-		socket.onopen = () => Object.values(subs).forEach(subscribe);
-		socket.onmessage = ({ data }) => {
-			data = JSON.parse(data);
-			if (data.id in subs)
-				console.log('msg', data.id) || subs[data.id].sink.next(data);
+		socket.onopen = () => pending.subscribe(subscribe);
+		socket.onmessage = ({ data }) => messages.next(JSON.parse(data));
+		socket.onerror = (error) => console.log(String(error.status));
+		socket.onclose = () => {
+			messages.error({ status: 0, message: 'Socket closed' });
+			delete subscribers[host];
 		};
-		socket.onclose = (error) => {
-			delete sockets[host];
-			for (let id in subs) {
-				// console.log(id, subs[id].sink.error);
-				subs[id].sink.error({ status: 0, message: 'Connection closed' });
-			}
-		};
-	
-		const subscribe = (query) => {
-			subs[query.id] = query;
-			if (socket.readyState === 1)
-				socket.send(JSON.stringify({ type: 'subscribe', data: { id: query.id, variables: query.variables, queryString: query.operation.text } }))
-		};
-		const unsubscribe = (query) => {
-			delete subs[query.id];
-			if (socket.readyState === 1)
-				socket.send(JSON.stringify({ type: 'unsubscribe', data: { id: query.id } }))
-		};
-
-		return sockets[host] = { subscribe, unsubscribe };
-	}
-	
-	return function send(query) {
-		return Observable.create((sink) => {
-			const { subscribe, unsubscribe } = connect(query.url);
-			subscribe({ ...query, sink });
-			return () => unsubscribe(query);
+		
+		const subscribe = ({ id, variables, operation }) => socket.send(JSON.stringify({ type: 'subscribe', data: { id, variables, queryString: operation.text } }));
+		const unsubscribe = ({ id }) => (socket.readyState === 1) && socket.send(JSON.stringify({ type: 'unsubscribe', data: { id } }));
+		
+		subscribers[host] = (query) => Observable.create((sink) => {
+			pending.next(query);
+			const subscription = messages.filter(({ id }) => query.id === id).subscribe(sink);
+			return () => {
+				unsubscribe(query);
+				subscription.unsubscribe();
+			};
 		});
+
+		return subscribers[host](query);
 	};
 }());
 

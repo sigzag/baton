@@ -7,8 +7,8 @@ export default class extends QueryRenderer {
 		const snapshot = environment.lookup(operation.fragment);
 		environment.retain(operation.root);
 
-		if (environment.check(operation.root))
-			return { props: snapshot.data, error: null, retry: null };
+		// if (environment.check(operation.root))
+		// 	return { props: snapshot.data, error: null, retry: null };
 
 		const props = snapshot.data && Object.values(snapshot.data).find((x) => x) && snapshot.data;
 		return super._fetch(operation, cacheConfig) || (props ? { props, error: null, retry: null } : null);

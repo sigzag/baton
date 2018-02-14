@@ -1,52 +1,26 @@
 import { toPairs, isPlainObject, mapValues, curryRight } from 'lodash';
 import { toGlobalId, fromGlobalId } from 'graphql-relay';
+import 'rxjs/add/operator/map';
 
 export { toGlobalId, fromGlobalId };
 
 // Relay resolver decorators
 export function mutationWithClientId(mutation) {
-	return async ({ input }, context, info) => ({ clientMutationId: input.clientMutationId, ...(await mutation(input, context, info)) })
+	return async ({ input }, context, info) => ({
+		clientMutationId: input.clientMutationId,
+		...(await mutation(input, context, info)),
+	});
 }
 export function subscriptionWithClientId(subscription) {
-	return async ({ input }, context, info) => ({ clientSubscriptionId: input.clientSubscriptionId, ...(await subscription(input, context, info)) })
+	return async ({ input }, context, info) => (await subscription(input, context, info)).map((data) => ({
+		clientSubscriptionId: input.clientSubscriptionId,
+		...data,
+	}));
 }
 
 // Curried versions
-
 export const mutationsWithClientId = curryRight(mapValues)(mutationWithClientId);
 export const subscriptionsWithClientId = curryRight(mapValues)(subscriptionWithClientId);
-
-// Relay connection helpers
-export function edge(node, getCursor = ({ id }) => id) {
-	return {
-		node,
-		cursor: String(typeof getCursor === 'function'
-			? getCursor(node)
-			: node[getCursor])
-	};
-}
-export function connection(nodes, params, getCursor = ({ id }) => id) {
-	if (!nodes.length)
-		return {
-			edges: [],
-			pageInfo: {
-				startCursor: params.before,
-				endCursor: params.after,
-				hasPreviousPage: false,
-				hasNextPage: false,
-			}
-		};
-	else
-		return {
-			edges: nodes.map(node => edge(node, getCursor)),
-			pageInfo: {
-				startCursor: params.before || nodes[0] && getCursor(nodes[0]),
-				endCursor: params.after || nodes[0] && getCursor(nodes[nodes.length - 1]),
-				hasPreviousPage: !!(params.last && params.last == nodes.length),
-				hasNextPage: !!(params.first && params.first == nodes.length),
-			}
-		};
-}
 
 // Handi thangs for serialization
 export function toBase64(value) {
@@ -69,32 +43,42 @@ export function toNode(doc) {
 	return doc.toObject({ node: true });
 }
 
-export function slice(array, { first, last, before, after }, compare = ({ id }, cursor) => id === cursor) {
-	if (after) {
-		const index = array.findIndex(node => compare(node, after));
-		if (~index)
-			array = array.slice(index + 1);
-	}
-	if (before) {
-		const index = array.findIndex(node => compare(node, before));
-		if (~index)
-			array = array.slice(0, index);
-	}
-	return (first
-		? array.slice(0, first)
-		: array.slice(last && -last)
-	).map(toNode);
-}
-export function page(nodes, { first, last }, getCursor = ({ id }) => id) {
+// Expect array of objects with a cursor prop or get cursor method
+export function edge(node) {
 	return {
-		edges: nodes.map(node => ({ node, cursor: getCursor(node) })),
+		node,
+		cursor: node.cursor
+	};
+}
+export function connection(nodes, args) {
+	return {
+		edges: nodes.map(edge),
 		pageInfo: {
-			startCursor: nodes.length ? getCursor(nodes[0]) : null,
-			endCursor: nodes.length ? getCursor(nodes[nodes.length - 1]) : null,
-			hasPreviousPage: last === nodes.length,
-			hasNextPage: first === nodes.length
+			startCursor: nodes.length ? nodes[0].cursor : args.after || args.before,
+			endCursor: nodes.length ? nodes[nodes.length - 1].cursor : args.before || args.after,
+			hasPreviousPage: args.last == nodes.length,
+			hasNextPage: args.first == nodes.length
 		}
 	};
+}
+export function slice(nodes, { first, last, before, after }) {
+	if (after) {
+		const index = nodes.findIndex(node => node.cursor == after);
+		if (~index)
+			nodes = nodes.slice(index + 1);
+	} else if (before) {
+		const index = nodes.findIndex(node => node.cursor == before);
+		if (~index)
+			nodes = nodes.slice(0, index);
+	}
+	
+	if (first)
+		return nodes.slice(0, first);
+	else
+		return nodes.slice(-last);
+}
+export function page(nodes, args) {
+	return connection(slice(nodes, args), args);
 }
 
 export function capitalize(str) {

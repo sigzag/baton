@@ -16,7 +16,7 @@ export function defaultParseToken(token, secret) {
 }
 
 export function getTokenFromURL(req) {
-	const token = (req.url.match(/jwt_token\=([^&]+)/) || [])[1];
+	const token = (req.url.match(/token\=([^&]+)/) || [])[1];
 	if (!token)
 		throw new Error('No authorization header', { message: 'Authorization header missing' });
 	return token;

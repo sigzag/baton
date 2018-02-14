@@ -8,9 +8,9 @@ const QueryContainer = ({ Container, query, variables = {}, cacheConfig, ...pass
 		cacheConfig={cacheConfig}
 		dataFrom="STORE_THEN_NETWORK"
 		query={query}
-		variables={pick(variables, query.modern().fragment.argumentDefinitions.map(({ name }) => name))}
-		render={({ error, props = {}, retry }) => {
-			const fragments = query.modern().fragment.selections
+		variables={pick(variables, (query.modern ? query.modern() : query()).fragment.argumentDefinitions.map(({ name }) => name))}
+		render={({ error, props = {}, retry, errors }) => {
+			const fragments = (query.modern ? query.modern() : query()).fragment.selections
 				.map((selection) => selection.kind === 'Condition' ? selection.selections[0] : selection)
 				.reduce((fragments, { name }) => ({ ...fragments, [name]: props && props[name] || null }), {});
 

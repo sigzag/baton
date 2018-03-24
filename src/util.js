@@ -12,7 +12,7 @@ export function mutationWithClientId(mutation) {
 	});
 }
 export function subscriptionWithClientId(subscription) {
-	return async ({ input }, context, info) => (await subscription(input, context, info)).map((data) => ({
+	return async ({ input, ...rest }, context, info) => (await subscription(input, context, info)).map((data) => ({
 		clientSubscriptionId: input.clientSubscriptionId,
 		...data,
 	}));

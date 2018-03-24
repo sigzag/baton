@@ -22,9 +22,9 @@ const send = (function() {
 	
 		socket.onopen = () => pending.subscribe(subscribe);
 		socket.onmessage = ({ data }) => messages.next(JSON.parse(data));
-		socket.onerror = (error) => console.log(String(error.status));
-		socket.onclose = () => {
-			messages.error({ status: 0, message: 'Socket closed' });
+		socket.onerror = (error) => console.log(error.status, error.message);
+		socket.onclose = (error) => {
+			messages.error({ status: 0, code: error.code, message: 'Socket closed' });
 			delete subscribers[host];
 		};
 		

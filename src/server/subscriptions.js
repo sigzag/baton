@@ -35,13 +35,14 @@ export default function({ formatError = String, server, port, source, schema, ro
 			const operationArgs = getVariableValues(schema, query.definitions[0].variableDefinitions, variables);
 			
 			// Subscribe
-			const observable = await rootValue[operationName](operationArgs, context);
+			const observable = await rootValue[operationName](operationArgs.coerced, context);
 
 			const subscription = observable.subscribe(async (data) => {
 				const rootValue = {
 					[operationName]: data,
 				};
-				const payload = await execute(schema, query, rootValue, null, variables);
+				// console.log(rootValue, query, variables);
+				const payload = await execute(schema, query, rootValue, context, variables);
 				socket.send(JSON.stringify({ id, ...payload }));
 			});
 

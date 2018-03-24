@@ -21,11 +21,14 @@ export default function(query, mutate) {
 		const body = new FormData();
 		if (uploadables) {
 			for (let key in uploadables) {
-				body.append(key, {
-					uri: uploadables[key].uri,
-					type: uploadables[key].type,
-					name: uploadables[key].name || 'test.jpeg',
-				});
+				if (uploadables[key].hasOwnProperty('file'))
+					body.append(key, uploadables[key].file);
+				else if (uploadables[key].hasOwnProperty('uri'))
+					body.append(key, {
+						uri: uploadables[key].uri,
+						type: uploadables[key].type,
+						name: uploadables[key].name || 'tmp.jpeg',
+					});
 			}
 		}
 		body.append('variables', JSON.stringify(variables));

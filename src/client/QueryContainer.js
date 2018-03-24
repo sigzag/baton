@@ -23,7 +23,6 @@ const QueryContainer = ({ Container, query, variables = {}, cacheConfig, ...pass
 					retry={retry}
 					{...passProps}
 					{...fragments}
-					viewer={fragments.viewer}
 				/>
 			);
 		}}

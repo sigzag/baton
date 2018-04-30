@@ -12,7 +12,7 @@ import {
 
 import { buildASTSchema, printSchema } from 'graphql/utilities';
 export { printSchema };
-import { parse } from 'graphql/language';
+import { parse, visit, Kind, BREAK } from 'graphql/language';
 
 import scalars from './scalars';
 
@@ -60,20 +60,21 @@ const defaultSchemaDefinitions = `
 const connectionArgs = parse(`
 	type Connected { connection(first: Int last: Int before: Cursor after: Cursor): Connection! }
 `).definitions[0].fields[0].arguments;
-const clientMutationIdInputValue = parse(`
-	input Input { clientMutationId: String! }
-`).definitions[0].fields[0];
-const clientMutationIdOutputValue = parse(`
-	type Output { clientMutationId: String! }
-`).definitions[0].fields[0];
-const clientSubscriptionIdInputValue = parse(`
-	input Input { clientSubscriptionId: String! }
-`).definitions[0].fields[0];
-const clientSubscriptionIdOutputValue = parse(`
-	type Output { clientSubscriptionId: String! }
-`).definitions[0].fields[0];
 
-function readSchema(path, options) {
+// const clientMutationIdInputValue = parse(`
+// 	input Input { clientMutationId: String! }
+// `).definitions[0].fields[0];
+// const clientMutationIdOutputValue = parse(`
+// 	type Output { clientMutationId: String! }
+// `).definitions[0].fields[0];
+// const clientSubscriptionIdInputValue = parse(`
+// 	input Input { clientSubscriptionId: String! }
+// `).definitions[0].fields[0];
+// const clientSubscriptionIdOutputValue = parse(`
+// 	type Output { clientSubscriptionId: String! }
+// `).definitions[0].fields[0];
+
+function readSchema(path, options = {}) {
 	const source = path;
 	const isDir = exists(path) && stat(path).isDirectory();
 	if (isDir && !exists(path = resolve(path, 'index.graphql')) || !exists(path) && !exists(path = `${path}.graphql`))
@@ -85,16 +86,14 @@ function readSchema(path, options) {
 	);
 }
 
-export default function(path, options = {}) {
-	const schemaString = readSchema(resolve(dirname(callsite()[1].getFileName()), path), options);
-
+export function buildSchema(schemaString, options = {}) {
 	const connectionTypes = uniq(schemaString.match(/Connection\(.*?\)/g).map(type => `${type.slice(11,-1)}Connection`));
 	const includedScalars = scalars
 		.concat(options.scalars || [])
 		.filter(type => type.name === 'ID' || type.name === 'Cursor' || type.name === 'File' || new RegExp(`:\\s*${type.name}[!|\\}|\\s]`).test(schemaString));
 	const includedEnums = (options.enums || []);
 
-	const ast = parse(`
+	let ast = parse(`
 		${defaultSchemaDefinitions}
 		${connectionTypes.map(type => `type ${type}Edge { node: ${type.slice(0,-10)}! cursor: Cursor! }`)}
 		${connectionTypes.map(type => `type ${type} { edges: [${type}Edge]! pageInfo: PageInfo! }`)}
@@ -103,62 +102,46 @@ export default function(path, options = {}) {
 		${schemaString.replace(/Connection\((.*?)\)/g, (match, type) => `${type}Connection`)}
 	`);
 
-	// Append interfaces' fields (bizarre that this isn't a default)
-	const interfaceFields = ast.definitions
-		.filter(isInterface)
-		.reduce((interfaces, def) => ({ ...interfaces, [def.name.value]: def.fields }), {});
-	for (let def of ast.definitions.filter(hasInterface()))
-		for (let { name: { value: name } } of def.interfaces)
-			if (!interfaceFields.hasOwnProperty(name))
-				throw new Error(`Type "${def.name.value}" implements missing interface "${name}"`);
-			else
-				def.fields.push(...interfaceFields[name]);
-
 	// Add connection arguments to connection fields!
-	for (let def of ast.definitions)
-		for (let field of def.fields || [])
-			if (field.type.kind === 'NonNullType'
-				? ~connectionTypes.indexOf(field.type.type.name && field.type.type.name.value)
-				: ~connectionTypes.indexOf(field.type.name && field.type.name.value))
-				field.arguments.push(...connectionArgs);
+	// const mutation = [];
+	// const subscription = [];
+	const interfaceFields = [];
+	visit(ast, {
+		[Kind.INTERFACE_TYPE_DEFINITION]: (node) => interfaceFields[node.name.value] = node.fields,
+		// [Kind.OBJECT_TYPE_DEFINITION]: (node) => {
+		// 	switch (node.name.value) {
+		// 		case 'Mutation':
+		// 			visit(node.fields, { [Kind.NAMED_TYPE]: (node) => mutation.push(node.name.value) });
+		// 		case 'Subscription':
+		// 			visit(node.fields, { [Kind.NAMED_TYPE]: (node) => subscription.push(node.name.value) });
+		// 	}
+		// },
+	});
 
-	{
-		// Add clientMutationId field to input types
-		const inputs = ast.definitions
-			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Mutation')
-			.fields
-			.filter(({ arguments: [input] }) => input)
-			.map(({ arguments: [input] }) => baseType(input))
-			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
-		for (let def of uniq(inputs))
-			def && def.fields.push(clientMutationIdInputValue);
-		// Add clientMutationId field to output types
-		const outputs = ast.definitions
-			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Mutation')
-			.fields
-			.map(baseType)
-			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
-		for (let def of uniq(outputs))
-			def && def.fields.push(clientMutationIdOutputValue);
-	} {
-		// Add clientSubscriptionId field to input types
-		const inputs = ast.definitions
-			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Subscription')
-			.fields
-			.filter(({ arguments: [input] }) => input)
-			.map(({ arguments: [input] }) => baseType(input))
-			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
-		for (let def of uniq(inputs))
-			def && def.fields.push(clientSubscriptionIdInputValue);
-		// Add clientSubscriptionId field to output types
-		const outputs = ast.definitions
-			.find(({ kind, name: { value } }) => kind === 'ObjectTypeDefinition' && value === 'Subscription')
-			.fields
-			.map(baseType)
-			.map(name => ast.definitions.find(({ name: { value } }) => value === name));
-		for (let def of uniq(outputs))
-			def && def.fields.push(clientSubscriptionIdOutputValue);
-	}
+	ast = visit(ast, {
+		[Kind.OBJECT_TYPE_DEFINITION]: (node) => {
+			const fields = node.interfaces.reduce((fields, node) => [...fields, ...interfaceFields[node.name.value]], node.fields);
+			// if (~mutation.indexOf(node.name.value))
+			// 	fields.push(clientMutationIdOutputValue);
+			// if (~subscription.indexOf(node.name.value))
+			// 	fields.push(clientSubscriptionIdOutputValue);
+			return { ...node, fields };
+		},
+		// [Kind.INPUT_OBJECT_TYPE_DEFINITION]: (node) => {
+		// 	if (~mutation.indexOf(node.name.value))
+		// 		return { ...node, fields: [...node.fields, clientMutationIdInputValue] };
+		// 	if (~subscription.indexOf(node.name.value))
+		// 		return { ...node, fields: [...node.fields, clientSubscriptionIdInputValue] };
+		// },
+		[Kind.FIELD_DEFINITION]: (node) => {
+			const isConnection = !!visit(node, {
+				[Kind.NAMED_TYPE]: (node) => ~connectionTypes.indexOf(node.name.value) ? BREAK : void 0,
+				[Kind.FIELD_DEFINITION]: { leave: () => null },
+			}));
+			if (isConnection)
+				return { ...node, arguments: [...node.arguments, ...connectionArgs] };
+		},
+	});
 
 	// Build schema and
 	const schema = buildASTSchema(ast);
@@ -183,4 +166,8 @@ export default function(path, options = {}) {
 	}
 
 	return schema;
+}
+
+export default function requireSchema(path, options) {
+	return buildSchema(readSchema(resolve(/* dirname(callsite()[1].getFileName()), */path), options), options);
 }

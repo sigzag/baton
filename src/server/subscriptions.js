@@ -16,7 +16,14 @@ export default function({ formatError = String, server, port, source, schema, ro
 		console.log('ws error on ' + new Date + ':\n' + err.stack + '\n');
 	});
 	wss.on('connection', async socket => {
-		const context = { socket, ...(await getContext(socket, socket.upgradeReq)) };
+		let context;
+		try {
+			context = { socket, ...(await getContext(socket, socket.upgradeReq)) };
+		} catch (error) {
+			socket.send(JSON.stringify({ id, errors: [error].map(formatError) }));
+			return socket.close();
+		}
+
 		const subscriptions = new Map;
 
 		async function subscribe({ id, queryString, variables }) {
@@ -35,13 +42,17 @@ export default function({ formatError = String, server, port, source, schema, ro
 			const operationArgs = getVariableValues(schema, query.definitions[0].variableDefinitions, variables);
 			
 			// Subscribe
+			if (operationArgs.errors) {
+				console.log(operationArgs.errors);
+				return socket.send(JSON.stringify({ id, errors: errors.map(formatError) }));
+			}
+
 			const observable = await rootValue[operationName](operationArgs.coerced, context);
 
 			const subscription = observable.subscribe(async (data) => {
 				const rootValue = {
 					[operationName]: data,
 				};
-				// console.log(rootValue, query, variables);
 				const payload = await execute(schema, query, rootValue, context, variables);
 				socket.send(JSON.stringify({ id, ...payload }));
 			});

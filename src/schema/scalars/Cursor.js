@@ -12,7 +12,7 @@ export default new GraphQLScalarType({
 		return toBase64(value);
 	},
 	parseValue(value) {
-		if (!value)
+		if (value == null)
 			throw new TypeError('Field error: value is an invalid (null) Cursor');
 		if (typeof value !== 'string')
 			throw new TypeError('Field error: value is an invalid (non-string) Cursor');

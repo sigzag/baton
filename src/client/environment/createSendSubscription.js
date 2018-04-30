@@ -52,9 +52,9 @@ export default function(subscribe, store) {
 		cacheConfig = {},
 		observer
 	) {
-		if (variables.hasOwnProperty('input')) {
-			variables.input.clientSubscriptionId = `clientSubscriptionId:${counter++}`;
-		}
+		// if (variables.hasOwnProperty('input')) {
+		// 	variables.input.clientSubscriptionId = `clientSubscriptionId:${counter++}`;
+		// }
 
 		const operationConfig = {
 			id: operation.name + counter,

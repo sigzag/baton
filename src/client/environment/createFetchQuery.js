@@ -14,21 +14,21 @@ export default function(query, mutate) {
 		cacheConfig = {},
 		uploadables
 	) {
-		if (variables.hasOwnProperty('input')) {
-			variables.input.clientMutationId = `clientMutationId:${counter++}`;
-		}
+		// if (variables.hasOwnProperty('input')) {
+		// 	variables.input.clientMutationId = `clientMutationId:${counter++}`;
+		// }
 
 		const body = new FormData();
 		if (uploadables) {
 			for (let key in uploadables) {
-				if (uploadables[key].hasOwnProperty('file'))
-					body.append(key, uploadables[key].file);
-				else if (uploadables[key].hasOwnProperty('uri'))
+				if (typeof uploadables[key].file === 'string')
 					body.append(key, {
-						uri: uploadables[key].uri,
+						uri: uploadables[key].file,
 						type: uploadables[key].type,
 						name: uploadables[key].name || 'tmp.jpeg',
 					});
+				else if (uploadables[key].file)
+					body.append(key, uploadables[key].file);
 			}
 		}
 		body.append('variables', JSON.stringify(variables));

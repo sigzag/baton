@@ -5,8 +5,10 @@ import { Kind } from 'graphql/language';
 export default new GraphQLScalarType({
 	name: 'Date',
 	serialize(value) {
-		if (!(value instanceof Date))
+		value = new Date(isNaN(+value) ? value : +value);
+		if (isNaN(+value)) {
 			throw new TypeError('Field error: value is not an instance of Date');
+		}
 		if (isNaN(value.getTime()))
 			throw new TypeError('Field error: value is an invalid Date');
 

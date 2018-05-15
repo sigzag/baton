@@ -1,43 +1,8 @@
-import callsite from 'callsite';
-import { uniq } from 'lodash';
-import {
-	existsSync as exists,
-	statSync as stat,
-	readFileSync as read
-} from 'fs';
-import {
-	resolve,
-	dirname
-} from 'path';
-
+import { existsSync as exists, statSync as stat, readFileSync as read } from 'fs';
+import { resolve, dirname } from 'path';
 import { buildASTSchema, printSchema } from 'graphql/utilities';
-export { printSchema };
 import { parse, visit, Kind, BREAK } from 'graphql/language';
-
 import scalars from './scalars';
-
-function isUnion({ kind }) {
-	return kind === 'UnionTypeDefinition';
-}
-function isInterface({ kind }) {
-	return kind === 'InterfaceTypeDefinition';
-}
-function isInput({ kind }) {
-	return kind === 'InputObjectTypeDefinition';
-}
-function hasInterface(name) {
-	return name
-		? ({ interfaces }) => interfaces && interfaces.find(({ name: { value } }) => value === name)
-		: ({ interfaces }) => interfaces && interfaces.length;
-}
-function baseType(field) {
-	if (field.type && field.type.kind === 'NonNullType')
-		return baseType(field.type.type);
-	else if (field.name.value === 'input')
-		return baseType(field.type);
-	else
-		return field.name.value;
-}
 
 function resolveType(node) {
 	const nodeType = node.__typename || node.constructor.name;
@@ -57,22 +22,10 @@ const defaultSchemaDefinitions = `
 	type Video { name: String uri: String! frame: Image! duration: Float! }
 	input VideoInput { name: String file: File! }
 `;
+
 const connectionArgs = parse(`
 	type Connected { connection(first: Int last: Int before: Cursor after: Cursor): Connection! }
 `).definitions[0].fields[0].arguments;
-
-// const clientMutationIdInputValue = parse(`
-// 	input Input { clientMutationId: String! }
-// `).definitions[0].fields[0];
-// const clientMutationIdOutputValue = parse(`
-// 	type Output { clientMutationId: String! }
-// `).definitions[0].fields[0];
-// const clientSubscriptionIdInputValue = parse(`
-// 	input Input { clientSubscriptionId: String! }
-// `).definitions[0].fields[0];
-// const clientSubscriptionIdOutputValue = parse(`
-// 	type Output { clientSubscriptionId: String! }
-// `).definitions[0].fields[0];
 
 function readSchema(path, options = {}) {
 	const source = path;
@@ -80,64 +33,42 @@ function readSchema(path, options = {}) {
 	if (isDir && !exists(path = resolve(path, 'index.graphql')) || !exists(path) && !exists(path = `${path}.graphql`))
 		throw new Error(`Cannot find schema ${source}`);
 
-	return read(path, options.enc || 'utf-8').replace(/@include\(\'(.*?)\'\)/g,
-		(match, filename) =>
-			readSchema(isDir ? resolve(source, filename) : resolve(source, '..', filename), { ...options, source })
+	return read(path, options.enc || 'utf-8').replace(
+		/@include\(\'(.*?)\'\)/g,
+		(match, filename) => readSchema(isDir ? resolve(source, filename) : resolve(source, '..', filename), options)
 	);
 }
 
 export function buildSchema(schemaString, options = {}) {
-	const connectionTypes = uniq(schemaString.match(/Connection\(.*?\)/g).map(type => `${type.slice(11,-1)}Connection`));
-	const includedScalars = scalars
-		.concat(options.scalars || [])
-		.filter(type => type.name === 'ID' || type.name === 'Cursor' || type.name === 'File' || new RegExp(`:\\s*${type.name}[!|\\}|\\s]`).test(schemaString));
+	const connectionTypes = Array.from(new Set(schemaString.match(/Connection\(.*?\)/g).map((type) => type.slice(11,-1))));
+	const includedScalars = scalars.concat(options.scalars || []);
 	const includedEnums = (options.enums || []);
 
 	let ast = parse(`
 		${defaultSchemaDefinitions}
-		${connectionTypes.map(type => `type ${type}Edge { node: ${type.slice(0,-10)}! cursor: Cursor! }`)}
-		${connectionTypes.map(type => `type ${type} { edges: [${type}Edge]! pageInfo: PageInfo! }`)}
-		${includedScalars.map(type => `scalar ${type.name}`)}
-		${includedEnums.map(type => `enum ${type.name} { PLACEHOLDER }`)}
+		${connectionTypes.map((type) => `type ${type}ConnectionEdge { node: ${type}! cursor: Cursor! }`)}
+		${connectionTypes.map((type) => `type ${type}Connection { edges: [${type}Edge!]! pageInfo: PageInfo! }`)}
+		${includedScalars.map((type) => `scalar ${type.name}`)}
+		${includedEnums.map((type) => `enum ${type.name} { PLACEHOLDER }`)}
 		${schemaString.replace(/Connection\((.*?)\)/g, (match, type) => `${type}Connection`)}
 	`);
 
-	// Add connection arguments to connection fields!
-	// const mutation = [];
-	// const subscription = [];
-	const interfaceFields = [];
+	const interfaces = {};
 	visit(ast, {
-		[Kind.INTERFACE_TYPE_DEFINITION]: (node) => interfaceFields[node.name.value] = node.fields,
-		// [Kind.OBJECT_TYPE_DEFINITION]: (node) => {
-		// 	switch (node.name.value) {
-		// 		case 'Mutation':
-		// 			visit(node.fields, { [Kind.NAMED_TYPE]: (node) => mutation.push(node.name.value) });
-		// 		case 'Subscription':
-		// 			visit(node.fields, { [Kind.NAMED_TYPE]: (node) => subscription.push(node.name.value) });
-		// 	}
-		// },
+		enter: { [Kind.INTERFACE_TYPE_DEFINITION]: (node) => interfaces[node.name.value] = { fields: node.fields, types: [] } }, 
+		leave: { [Kind.OBJECT_TYPE_DEFINITION]: (node) => node.interfaces.forEach((intf) => interfaces[intf.name.value].types.push(node)) },
 	});
 
 	ast = visit(ast, {
-		[Kind.OBJECT_TYPE_DEFINITION]: (node) => {
-			const fields = node.interfaces.reduce((fields, node) => [...fields, ...interfaceFields[node.name.value]], node.fields);
-			// if (~mutation.indexOf(node.name.value))
-			// 	fields.push(clientMutationIdOutputValue);
-			// if (~subscription.indexOf(node.name.value))
-			// 	fields.push(clientSubscriptionIdOutputValue);
-			return { ...node, fields };
-		},
-		// [Kind.INPUT_OBJECT_TYPE_DEFINITION]: (node) => {
-		// 	if (~mutation.indexOf(node.name.value))
-		// 		return { ...node, fields: [...node.fields, clientMutationIdInputValue] };
-		// 	if (~subscription.indexOf(node.name.value))
-		// 		return { ...node, fields: [...node.fields, clientSubscriptionIdInputValue] };
-		// },
+		[Kind.OBJECT_TYPE_DEFINITION]: (node) => ({
+			...node,
+			fields: node.interfaces.reduce((fields, node) => fields.concat(interfaces[node.name.value].fields), node.fields),
+		}),
 		[Kind.FIELD_DEFINITION]: (node) => {
 			const isConnection = !!visit(node, {
 				[Kind.NAMED_TYPE]: (node) => ~connectionTypes.indexOf(node.name.value) ? BREAK : void 0,
 				[Kind.FIELD_DEFINITION]: { leave: () => null },
-			}));
+			});
 			if (isConnection)
 				return { ...node, arguments: [...node.arguments, ...connectionArgs] };
 		},
@@ -153,21 +84,21 @@ export function buildSchema(schemaString, options = {}) {
 		Object.assign(schema._typeMap[enumerated.name], enumerated);
 
 	// Type resolvers for interfaces & unions
-	for (let def of ast.definitions.filter(isInterface)) {
-		const type = schema._typeMap[def.name.value];
-		type._types = ast.definitions
-			.filter(hasInterface(def.name.value))
-			.map(({ name: { value } }) => schema._typeMap[value]);
-		type.resolveType = type._typeConfig.resolveType = resolveType;
-	}
-	for (let def of ast.definitions.filter(isUnion)) {
-		const type = schema._typeMap[def.name.value];
-		type.resolveType = type._typeConfig.resolveType = resolveType;
-	}
+	visit(ast, {
+		[Kind.INTERFACE_TYPE_DEFINITION]: (node) => {
+			const type = schema.getType(node.name.value);
+			type._types = interfaces[node.name.value].types.map((node) => schema.getType(node.name.value));
+			type._typeConfig.resolveType = type.resolveType = resolveType;
+		},
+		[Kind.UNION_TYPE_DEFINITION]: (node) => {
+			const type = schema.getType(node.name.value);
+			type._typeConfig.resolveType = type.resolveType = resolveType;
+		},
+	});
 
 	return schema;
 }
 
 export default function requireSchema(path, options) {
-	return buildSchema(readSchema(resolve(/* dirname(callsite()[1].getFileName()), */path), options), options);
+	return buildSchema(readSchema(resolve(path), options), options);
 }

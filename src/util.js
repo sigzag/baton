@@ -1,26 +1,4 @@
-import { toPairs, isPlainObject, mapValues, curryRight } from 'lodash';
-import { toGlobalId, fromGlobalId } from 'graphql-relay';
-import 'rxjs/add/operator/map';
-
-export { toGlobalId, fromGlobalId };
-
-// Relay resolver decorators
-export function mutationWithClientId(mutation) {
-	return async ({ input }, context, info) => ({
-		clientMutationId: input.clientMutationId,
-		...(await mutation(input, context, info)),
-	});
-}
-export function subscriptionWithClientId(subscription) {
-	return async ({ input }, context, info) => (await subscription(input, context, info)).map((data) => ({
-		clientSubscriptionId: input.clientSubscriptionId,
-		...data,
-	}));
-}
-
-// Curried versions
-export const mutationsWithClientId = curryRight(mapValues)(mutationWithClientId);
-export const subscriptionsWithClientId = curryRight(mapValues)(subscriptionWithClientId);
+export { toGlobalId, fromGlobalId } from 'graphql-relay';
 
 // Handi thangs for serialization
 export function toBase64(value) {
@@ -33,21 +11,18 @@ export function fromBase64(value) {
 export function toNode(doc) {
 	if (!doc)
 		return null;
-
-	if (!doc.toObject)
-		return doc;
-
 	if (doc.toNode)
 		return doc.toNode();
-
-	return doc.toObject({ node: true });
+	if (doc.toObject)
+		return doc.toObject({ node: true });
+	return doc;
 }
 
 // Expect array of objects with a cursor prop or get cursor method
 export function edge(node) {
 	return {
 		node,
-		cursor: node.cursor
+		cursor: node.cursor,
 	};
 }
 export function connection(nodes, args) {
@@ -57,8 +32,8 @@ export function connection(nodes, args) {
 			startCursor: nodes.length ? nodes[0].cursor : args.after || args.before,
 			endCursor: nodes.length ? nodes[nodes.length - 1].cursor : args.before || args.after,
 			hasPreviousPage: args.last == nodes.length,
-			hasNextPage: args.first == nodes.length
-		}
+			hasNextPage: args.first == nodes.length,
+		},
 	};
 }
 export function slice(nodes, { first, last, before, after }) {

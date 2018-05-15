@@ -1,10 +1,9 @@
-if (!window.navigator.userAgent)
-	window.navigator.userAgent = 'ReactNative';
-
 import { Observable, Subject } from 'rxjs';
-// import { ReplaySubject } from 'rxjs/ReplaySubject';
 import { ReplaySubject } from 'rxjs/ReplaySubject';
 import 'rxjs/add/operator/filter';
+
+if (!window.navigator.userAgent)
+	window.navigator.userAgent = 'ReactNative';
 
 const send = (function() {
 	const subscribers = {};
@@ -22,7 +21,7 @@ const send = (function() {
 	
 		socket.onopen = () => pending.subscribe(subscribe);
 		socket.onmessage = ({ data }) => messages.next(JSON.parse(data));
-		socket.onerror = (error) => console.log(error.status, error.message);
+		// socket.onerror = (error) => console.log(error.status, error.message);
 		socket.onclose = (error) => {
 			messages.error({ status: 0, code: error.code, message: 'Socket closed' });
 			delete subscribers[host];
@@ -52,17 +51,11 @@ export default function(subscribe, store) {
 		cacheConfig = {},
 		observer
 	) {
-		// if (variables.hasOwnProperty('input')) {
-		// 	variables.input.clientSubscriptionId = `clientSubscriptionId:${counter++}`;
-		// }
-
-		const operationConfig = {
+		return subscribe({
 			id: operation.name + counter,
 			operation,
 			variables,
 			cacheConfig,
-		}
-		
-		return subscribe(operationConfig, send, store);
+		}, send, store);
 	}
 }

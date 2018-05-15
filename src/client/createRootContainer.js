@@ -1,17 +1,9 @@
 import React, { createContext } from 'react';
-import {
-	createFragmentContainer,
-	createRefetchContainer,
-	createPaginationContainer
-} from 'react-relay';
-import {
-	getOperation,
-	createOperationSelector
-} from 'relay-runtime';
-import QueryContainer from './NewQueryContainer';
+import { createFragmentContainer, createRefetchContainer, createPaginationContainer } from 'react-relay';
+import QueryContainer from './QueryContainer';
 
-const { Provider, Consumer } = createContext();
-export { Provider, Consumer };
+const { Provider: EnvironmentProvider, Consumer: EnvironmentConsumer } = createContext();
+export { EnvironmentProvider, EnvironmentConsumer };
 
 const getDisplayName = (Component) => Component.displayName || Component.name || 'Component';
 
@@ -26,7 +18,7 @@ export function createFragmentRootContainer(
 ) {
 	const Container = createFragmentContainer(Component, fragments);
 	const RootContainer = (variables = {}) => (
-		<Consumer>
+		<EnvironmentConsumer>
 			{(environment) => (
 				<QueryContainer
 					Container={Container}
@@ -37,7 +29,7 @@ export function createFragmentRootContainer(
 					{...variables}
 				/>
 			)}
-		</Consumer>
+		</EnvironmentConsumer>
 	);
 	RootContainer.displayName = `RootFragmentContainer(${getDisplayName(Component)})`;
 	return RootContainer;
@@ -54,7 +46,7 @@ export function createRefetchRootContainer(
 ) {
 	const Container = createRefetchContainer(Component, fragments, query);
 	const RootContainer = (variables = {}) => (
-		<Consumer>
+		<EnvironmentConsumer>
 			{(environment) => (
 				<QueryContainer
 					Container={Container}
@@ -65,7 +57,7 @@ export function createRefetchRootContainer(
 					{...variables}
 				/>
 			)}
-		</Consumer>
+		</EnvironmentConsumer>
 	);
 	RootContainer.displayName = `RootRefetchContainer(${getDisplayName(Component)})`;
 	return RootContainer;
@@ -83,7 +75,7 @@ export function createPaginationRootContainer(
 ) {
 	const Container = createPaginationContainer(Component, fragments, { ...options, query });
 	const RootContainer = (variables = {}) => (
-		<Consumer>
+		<EnvironmentConsumer>
 			{(environment) => (
 				<QueryContainer
 					Container={Container}
@@ -94,7 +86,7 @@ export function createPaginationRootContainer(
 					{...variables}
 				/>
 			)}
-		</Consumer>
+		</EnvironmentConsumer>
 	);
 	RootContainer.displayName = `RootPaginationContainer(${getDisplayName(Component)})`;
 	return RootContainer;

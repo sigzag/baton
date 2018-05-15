@@ -1,10 +1,8 @@
-let counter = 0;
-
 async function send(query) {
-	const response = await fetch(query.url, query.context);
-	if (response.status !== 200)
-		throw response;
-	return response.json();
+	const res = await fetch(query.url, query.context);
+	if (res.status !== 200 || !res.headers.get('content-type').includes('application/json'))
+		throw res;
+	return res.json();
 };
 
 export default function(query, mutate) {
@@ -14,25 +12,20 @@ export default function(query, mutate) {
 		cacheConfig = {},
 		uploadables
 	) {
-		// if (variables.hasOwnProperty('input')) {
-		// 	variables.input.clientMutationId = `clientMutationId:${counter++}`;
-		// }
-
 		const body = new FormData();
-		if (uploadables) {
-			for (let key in uploadables) {
-				if (typeof uploadables[key].file === 'string')
-					body.append(key, {
-						uri: uploadables[key].file,
-						type: uploadables[key].type,
-						name: uploadables[key].name || 'tmp.jpeg',
-					});
-				else if (uploadables[key].file)
-					body.append(key, uploadables[key].file);
-			}
-		}
 		body.append('variables', JSON.stringify(variables));
 		body.append('query', operation.text);
+		if (uploadables)
+			for (let key in uploadables)
+				if (uploadables[key].file)
+					body.append(key, typeof uploadables[key].file === 'string'
+						? {
+							uri: uploadables[key].file,
+							type: uploadables[key].type,
+							name: uploadables[key].name || 'tmp.jpeg',
+						}
+						: uploadables[key].file
+					);
 
 		const operationConfig = {
 			id: operation.name,

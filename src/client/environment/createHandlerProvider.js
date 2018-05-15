@@ -1,7 +1,4 @@
-import {
-	ConnectionHandler,
-	ViewerHandler
-} from 'relay-runtime';
+import { ConnectionHandler, ViewerHandler } from 'relay-runtime';
 
 const ObjectHandler = {
 	update(proxy, payload) {

@@ -3,8 +3,6 @@ import { GraphQLError } from 'graphql/error';
 import { Kind } from 'graphql/language';
 import { fromGlobalId } from 'graphql-relay';
 
-import { Schema } from 'mongoose';
-
 export default new GraphQLScalarType({
 	name: 'ID',
 	serialize(value) {

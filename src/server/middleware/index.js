@@ -1,5 +1,5 @@
 import graphql from 'express-graphql';
-import accessControl from './accessControl';
+import cors from './cors';
 import files from './files';
 
 export default function(options = {}) {
@@ -8,7 +8,7 @@ export default function(options = {}) {
 			Object.assign(req, options);
 			next();
 		},
-		accessControl(options),
+		cors(options),
 		files(options),
 		graphql(options)
 	];

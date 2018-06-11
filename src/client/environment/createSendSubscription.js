@@ -1,6 +1,7 @@
 import { Observable, Subject } from 'rxjs';
 import { ReplaySubject } from 'rxjs/ReplaySubject';
 import 'rxjs/add/operator/filter';
+import WebSocket from './ReconnectingWebSocket';
 
 if (!window.navigator.userAgent)
 	window.navigator.userAgent = 'ReactNative';
@@ -15,7 +16,7 @@ const send = (function() {
 		if (host in subscribers)
 			return subscribers[host](query);
 
-		const socket = new WebSocket(url);
+		const socket = new WebSocket(url, [], { debug: true });
 		const pending = new ReplaySubject();
 		const messages = new Subject();
 	
@@ -24,7 +25,7 @@ const send = (function() {
 		// socket.onerror = (error) => console.log(error.status, error.message);
 		socket.onclose = (error) => {
 			messages.error({ status: 0, code: error.code, message: 'Socket closed' });
-			delete subscribers[host];
+			// delete subscribers[host];
 		};
 		
 		const subscribe = ({ id, variables, operation }) => socket.send(JSON.stringify({ type: 'subscribe', data: { id, variables, queryString: operation.text } }));

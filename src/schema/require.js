@@ -1,11 +1,15 @@
 import { existsSync as exists, statSync as stat, readFileSync as read } from 'fs';
-import { resolve, dirname } from 'path';
-import { buildASTSchema, printSchema } from 'graphql/utilities';
+import { resolve } from 'path';
+import { buildASTSchema } from 'graphql/utilities';
 import { parse, visit, Kind, BREAK } from 'graphql/language';
 import scalars from './scalars';
 
 function resolveType(node) {
-	const nodeType = node.__typename || node.constructor.name;
+	const nodeType = !node.__typename
+		? node.constructor.name
+		: typeof node.__typename === 'function'
+		? node.__typename()
+		: node.__typename;
 	return this._types.find(({ name }) => name == nodeType);
 }
 
@@ -47,7 +51,7 @@ export function buildSchema(schemaString, options = {}) {
 	let ast = parse(`
 		${defaultSchemaDefinitions}
 		${connectionTypes.map((type) => `type ${type}ConnectionEdge { node: ${type}! cursor: Cursor! }`)}
-		${connectionTypes.map((type) => `type ${type}Connection { edges: [${type}Edge!]! pageInfo: PageInfo! }`)}
+		${connectionTypes.map((type) => `type ${type}Connection { edges: [${type}ConnectionEdge!]! pageInfo: PageInfo! }`)}
 		${includedScalars.map((type) => `scalar ${type.name}`)}
 		${includedEnums.map((type) => `enum ${type.name} { PLACEHOLDER }`)}
 		${schemaString.replace(/Connection\((.*?)\)/g, (match, type) => `${type}Connection`)}
@@ -66,7 +70,7 @@ export function buildSchema(schemaString, options = {}) {
 		}),
 		[Kind.FIELD_DEFINITION]: (node) => {
 			const isConnection = !!visit(node, {
-				[Kind.NAMED_TYPE]: (node) => ~connectionTypes.indexOf(node.name.value) ? BREAK : void 0,
+				[Kind.NAMED_TYPE]: (node) => connectionTypes.includes(node.name.value.slice(0, -10)) ? BREAK : void 0,
 				[Kind.FIELD_DEFINITION]: { leave: () => null },
 			});
 			if (isConnection)

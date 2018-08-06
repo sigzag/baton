@@ -1,10 +1,11 @@
 {
   "name": "relay-baton",
-  "version": "3.0.32",
+  "version": "3.0.31",
   "description": "Mongoose & just regular string relay schema builder & helpers & tidbits & stuffs, ooh, and relay subscriptions",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "babel src -d build"
+    "build": "babel src -d build",
+    "patch": "yarn run build && npm version patch && npm publish"
   },
   "keywords": [
     "mongodb",

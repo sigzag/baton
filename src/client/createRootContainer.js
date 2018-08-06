@@ -3,7 +3,12 @@ import { createFragmentContainer, createRefetchContainer, createPaginationContai
 import QueryContainer from './QueryContainer';
 
 const { Provider: EnvironmentProvider, Consumer: EnvironmentConsumer } = createContext();
-export { EnvironmentProvider, EnvironmentConsumer };
+const withEnvironment = (Component) => (props) => (
+	<EnvironmentConsumer>
+		{(environment) => <Component {...props} environment={environment} />}
+	</EnvironmentConsumer>
+);
+export { EnvironmentProvider, EnvironmentConsumer, withEnvironment };
 
 const getDisplayName = (Component) => Component.displayName || Component.name || 'Component';
 
@@ -70,7 +75,7 @@ export function createPaginationRootContainer(
 	{
 		variables: defaultVariables,
 		cacheConfig,
-		...options,
+		...options
 	} = {}
 ) {
 	const Container = createPaginationContainer(Component, fragments, { ...options, query });

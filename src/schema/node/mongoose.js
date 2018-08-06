@@ -27,16 +27,16 @@ export default function(schema, options = {}) {
 	const resolver = resolveConnection(model);
 	schema.statics.resolve = function(args, query) {
 		return resolver(null, getArgs(null, args, query));
-	}
+	};
 	schema.methods.toNode = function() {
 		return transforms.reduce((node, path) => ({
-			...node
+			...node,
 			path: transforms[path](this)
 		}, {
 			__typename: typename,
 			id: toGlobalId(typename, this._id)
-		});
-	});
+		}));
+	};
 
 	const transforms = Object.keys(schema.paths).reduce((transforms, path) => {
 		const isArray = schema.paths[path].instance === 'Array';

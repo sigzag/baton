@@ -27,6 +27,10 @@ export class NotReady extends HTTPError {
 	message = 'Not ready';
 	status = 503;
 }
+export class ServiceUnavailable extends HTTPError {
+	message = 'Service unavailable';
+	status = 503;
+}
 
 export function errorHandler(captureException) {
 	return function errorHandler(err, req, res, next) {

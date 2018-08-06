@@ -1,4 +1,4 @@
-import { Server } from 'uws';
+import { Server } from 'ws';
 import { parse, validate, execute, valueFromAST } from 'graphql';
 import { getVariableValues } from 'graphql/execution/values';
 

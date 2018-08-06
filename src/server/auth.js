@@ -21,7 +21,9 @@ function decrypt(text, algorithm, key) {
 		const [initVector, data] = text.split(':');
 		const decipher = createDecipheriv(algorithm, key, new Buffer(initVector, 'hex'));
 		return JSON.parse(decipher.update(data, 'hex', 'utf8') + decipher.final('utf8'));
-	} catch (e) {}
+	} catch (e) {
+		throw new Unauthorized('Invalid token');
+	}
 }
 
 function getToken(req) {

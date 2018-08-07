@@ -25,7 +25,7 @@ export default ({
 				{...passProps}
 				{...(query.modern ? query.modern() : query()).fragment.selections
 					.map((selection) => selection.kind === 'Condition' ? selection.selections[0] : selection)
-					.reduce((fragments, { name }) => ({ ...fragments, [name]: props && props[name] || null }), {})}
+					.reduce((fragments, { alias, name }) => ({ ...fragments, [alias || name]: props && props[alias || name] || null }), {})}
 			/>
 		)}
 	/>

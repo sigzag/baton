@@ -5,10 +5,10 @@ import { getVariableValues } from 'graphql/execution/values';
 export default function({ formatError = String, server, port, schema, rootValue, getContext = () => ({}) }) {
 	const wss = new Server({ server, port });
 	wss.on('error', (err) => console.log('ws error on ' + new Date + ':\n' + err.stack + '\n'));
-	wss.on('connection', async socket => {
+	wss.on('connection', async (socket, upgradeReq) => {
 		let context;
 		try {
-			context = { socket, ...(await getContext(socket, socket.upgradeReq)) };
+			context = { socket, ...(await getContext(socket, upgradeReq)) };
 		} catch (error) {
 			socket.send(JSON.stringify({ errors: [error].map(formatError) }));
 			return socket.close();

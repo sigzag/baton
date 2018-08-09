@@ -1,5 +1,4 @@
-import { Observable, Subject, ReplaySubject } from 'rxjs';
-import { filter, count } from 'rxjs/operators';
+import { Observable, Subject } from 'rxjs';
 import WebSocket from 'reconnecting-websocket';
 
 if (!window.navigator.userAgent)
@@ -16,46 +15,35 @@ const send = (function() {
 			return subscribers[host](query);
 
 		const socket = new WebSocket(url, [], { debug: false });
-		const pending = new ReplaySubject();
-		const complete = new Set();
-		const filterComplete = filter(({ id }) => !complete.has(id));
+		const pending = new Map();
 		const messages = new Subject();
-		
-		let subscription = null;
-		socket.onopen = () => subscription = pending.pipe(filterComplete).subscribe(subscribe);
+
+		socket.onopen = () => pending.forEach(subscribe);
 		socket.onmessage = ({ data }) => messages.next(JSON.parse(data));
 		// socket.onerror = (error) => console.log(error.status, error.message);
 		socket.onclose = (event) => {
 			// actual reconnecting happening here- thanks dumb half-recconecting-websocket
 			if (!event.wasClean)
 				socket._connect();
-			if (subscription) {
-				subscription.unsubscribe();
-				subscription = null;
-			}
 			// messages.error({ status: 0, code: error.code, message: 'Socket closed' });
 			// delete subscribers[host];
 		};
 		
-		const subscribe = ({ id, variables, operation }) => socket.send(JSON.stringify({ type: 'subscribe', data: { id, variables, queryString: operation.text } }));
+		const subscribe = ({ id, variables, operation }) => (socket.readyState === 1) && socket.send(JSON.stringify({ type: 'subscribe', data: { id, variables, queryString: operation.text } }));
 		const unsubscribe = ({ id }) => (socket.readyState === 1) && socket.send(JSON.stringify({ type: 'unsubscribe', data: { id } }));
 		
 		subscribers[host] = (query) => Observable.create((sink) => {
-			pending.next(query);
+			pending.set(query.id, query);
+			subscribe(query);
 			const subscription = messages.pipe(filter(({ id }) => query.id === id)).subscribe(sink);
 			return () => {
-				complete.add(query.id);
+				pending.delete(query.id);
 				subscription.unsubscribe();
 				unsubscribe(query);
-				const counter = pending.pipe(filterComplete, count());
-				const counterSub = counter.subscribe((count) => {
-					if (!count) {
-						socket.close();
-						delete subscribers[host];
-					}
-				});
-				counter.complete();
-				counterSub.unsubscribe();
+				if (!pending.size) {
+					socket.close();
+					delete subscribers[host];
+				}
 			};
 		});
 

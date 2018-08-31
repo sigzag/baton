@@ -44,7 +44,7 @@ function readSchema(path, options = {}) {
 }
 
 export function buildSchema(schemaString, options = {}) {
-	const connectionTypes = Array.from(new Set(schemaString.match(/Connection\(.*?\)/g).map((type) => type.slice(11,-1))));
+	const connectionTypes = Array.from(new Set((schemaString.match(/Connection\(.*?\)/g) || []).map((type) => type.slice(11,-1))));
 	const includedScalars = scalars.concat(options.scalars || []);
 	const includedEnums = (options.enums || []);
 

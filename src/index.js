@@ -4,4 +4,4 @@ export * from './server/auth';
 export * from './server/graceful';
 export { default as middleware } from './server/middleware';
 export { default as subscriptionServer } from './server/subscriptions';
-export { default as requireSchema } from './schema/require';
+export { default as requireSchema, buildSchema } from './schema/require';

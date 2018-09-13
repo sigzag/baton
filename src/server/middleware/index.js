@@ -1,5 +1,5 @@
 import graphql from 'express-graphql';
-import cors from './cors';
+import cors from 'cors';
 import files from './files';
 
 export default function(options = {}) {

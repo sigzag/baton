@@ -92,11 +92,11 @@ export function buildSchema(schemaString, options = {}) {
 		[Kind.INTERFACE_TYPE_DEFINITION]: (node) => {
 			const type = schema.getType(node.name.value);
 			type._types = interfaces[node.name.value].types.map((node) => schema.getType(node.name.value));
-			type._typeConfig.resolveType = type.resolveType = resolveType;
+			/*type._typeConfig.resolveType = */type.resolveType = resolveType;
 		},
 		[Kind.UNION_TYPE_DEFINITION]: (node) => {
 			const type = schema.getType(node.name.value);
-			type._typeConfig.resolveType = type.resolveType = resolveType;
+			/*type._typeConfig.resolveType = */type.resolveType = resolveType;
 		},
 	});
 

@@ -18,6 +18,7 @@
   "author": "Sig Rinde <sigurdr@gmail.com>",
   "license": "MIT",
   "dependencies": {
+    "backo": "^1.1.0",
     "cors": "^2.8.4",
     "express-graphql": "^0.6.0",
     "graphql": "^14.0.2",

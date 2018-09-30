@@ -1,6 +1,7 @@
 import { Observable, Subject } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import WebSocket from 'reconnecting-websocket';
+import Backoff from 'backo';
 
 if (!window.navigator.userAgent)
 	window.navigator.userAgent = 'ReactNative';
@@ -19,13 +20,17 @@ const send = (function() {
 		const pending = new Map();
 		const messages = new Subject();
 
-		socket.onopen = () => pending.forEach(subscribe);
+		const backoff = new Backoff({ min: 300, max: 20000 });
+		socket.onopen = () => {
+			backoff.reset();
+			pending.forEach(subscribe);
+		};
 		socket.onmessage = ({ data }) => messages.next(JSON.parse(data));
 		// socket.onerror = (error) => console.log(error.status, error.message);
 		socket.onclose = (event) => {
 			// actual reconnecting happening here- thanks dumb half-recconecting-websocket
 			if (!event.wasClean)
-				socket._connect();
+				setTimeout(() => socket._connect(), backoff.duration());
 			// messages.error({ status: 0, code: error.code, message: 'Socket closed' });
 			// delete subscribers[host];
 		};

@@ -10,7 +10,7 @@ export default new GraphQLScalarType({
 		return value.toJSON();
 	},
 	parseValue(value) {
-		if (!value || !(value.hasOwnProperty('buffer') || value.hasOwnProperty('uri')))
+		if (!value || !value.hasOwnProperty('mimetype'))
 			throw new TypeError('Field error: value is an invalid File');
 
 		return value;

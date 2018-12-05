@@ -1,12 +1,7 @@
 import { Observable, Subject } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import WebSocket from 'reconnecting-websocket';
-
-if (typeof window === 'undefined')
-	global.navigator.userAgent = 'ReactNative';
-else if (!window.navigator.userAgent)
-	window.navigator.userAgent = 'ReactNative';
-
+import './userAgent';
 
 const send = (function() {
 	const subscribers = {};

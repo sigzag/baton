@@ -1,3 +1,4 @@
+import ReactNative from 'react-native';
 import { Observable, Subject } from 'rxjs';
 import { filter } from 'rxjs/operators';
 import WebSocket from 'reconnecting-websocket';

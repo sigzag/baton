@@ -29,9 +29,12 @@ export class Node {
 	}
 	static async connection(args, query) {
 		const { before, after, first, last } = args;
-		const offset = (before || after) && `AND ${this.cursor} ${before ? '<' : '>'} ${before || after}`;
-		const limit = !isNaN(first || after) && `LIMIT ${first || after}`;
-		const order = `ORDER BY ${this.cursor} ${before ? 'DESC' : 'ASC'}`;
+
+		const reverse = before || last;
+
+		const offset = (before || after) && `AND ${this.cursor} ${reverse ? '<' : '>'} ${before || after}`;
+		const limit = !isNaN(first || last) && `LIMIT ${first || last}`;
+		const order = `ORDER BY ${this.cursor} ${reverse ? 'DESC' : 'ASC'}`;
 		
 		const nodes = await this.query(`WHERE (${query}) ${offset || ''} ${limit || ''} ${order || ''}`);
 		if (before) nodes.reverse();

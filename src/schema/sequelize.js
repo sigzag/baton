@@ -36,7 +36,7 @@ export class Node {
 		const limit = !isNaN(first || last) && `LIMIT ${first || last}`;
 		const order = `ORDER BY ${this.cursor} ${reverse ? 'DESC' : 'ASC'}`;
 		
-		const nodes = await this.query(`WHERE (${query}) ${offset || ''} ${limit || ''} ${order || ''}`);
+		const nodes = await this.query(`WHERE (${query}) ${offset || ''} ${order || ''} ${limit || ''}`);
 		if (before) nodes.reverse();
 		return connection(nodes, args);
 	}

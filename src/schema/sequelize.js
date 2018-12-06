@@ -30,7 +30,7 @@ export class Node {
 	static async connection(args, query) {
 		const { before, after, first, last } = args;
 
-		const reverse = before || last;
+		const reverse = (before || last) != null;
 
 		const offset = (before || after) && `AND ${this.cursor} ${reverse ? '<' : '>'} ${before || after}`;
 		const limit = !isNaN(first || last) && `LIMIT ${first || last}`;

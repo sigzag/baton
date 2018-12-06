@@ -37,7 +37,7 @@ export class Node {
 		const order = `ORDER BY ${this.cursor} ${reverse ? 'DESC' : 'ASC'}`;
 		
 		const nodes = await this.query(`WHERE (${query}) ${offset || ''} ${order || ''} ${limit || ''}`);
-		if (before) nodes.reverse();
+		if (reverse) nodes.reverse();
 		return connection(nodes, args);
 	}
 

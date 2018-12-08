@@ -32,7 +32,7 @@ export class Node {
 
 		const reverse = (before || last) != null;
 
-		const offset = (before || after) && `AND ${this.cursor} ${reverse ? '<' : '>'} ${JSON.stringifiy(before || after)}`;
+		const offset = (before || after) && `AND ${this.cursor} ${reverse ? '<' : '>'} ${JSON.stringify(before || after)}`;
 		const limit = !isNaN(first || last) && `LIMIT ${first || last}`;
 		const order = `ORDER BY ${this.cursor} ${reverse ? 'DESC' : 'ASC'}`;
 		

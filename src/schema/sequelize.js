@@ -54,7 +54,7 @@ export class Node {
 		return record && new this(record);
 	}
 	static async findById(id) {
-		const record = await this.table.findById(ID(id));
+		const record = await this.table.findByPk(ID(id));
 		return record && new this(record);
 	}
 	static async findOrCreate(where, defaults) {

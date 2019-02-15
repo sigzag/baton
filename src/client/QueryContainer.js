@@ -16,7 +16,7 @@ export default ({
 		cacheConfig={cacheConfig}
 		environment={environment}
 		dataFrom="STORE_THEN_NETWORK"
-		render={({ error, props = {}, errors }) => (
+		render={({ error, props = {} }) => (
 			<Container
 				key="container"
 				variables={variables}

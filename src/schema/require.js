@@ -1,5 +1,5 @@
-import { existsSync as exists, statSync as stat, readFileSync as read } from 'fs';
-import { resolve } from 'path';
+import { existsSync, statSync, readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
 import { parse, visit, Kind, BREAK, buildASTSchema, extendSchema } from 'graphql';
 import { connectionArgs } from 'graphql-relay';
 import scalars from './scalars';
@@ -27,27 +27,14 @@ const defaultSchemaDefinitions = `
 	input VideoInput { name: String file: File! }
 `;
 
-function readSchema(path, options = {}) {
-	const source = path;
-	const isDir = exists(path) && stat(path).isDirectory();
-	if (isDir && !exists(path = resolve(path, 'index.graphql')) || !exists(path) && !exists(path = `${path}.graphql`))
-		throw new Error(`Cannot find schema ${source}`);
-
-	return read(path, options.enc || 'utf-8').replace(
-		/@include\(\'(.*?)\'\)/g,
-		(match, filename) => readSchema(isDir ? resolve(source, filename) : resolve(source, '..', filename), options)
-	);
-}
-
-
 function resolveIncludes(context, schemaPath, loaded) {
 	schemaPath = (/\.graphql$/.test(schemaPath) ? [schemaPath] : [
 		schemaPath,
 		schemaPath + '.graphql',
 		schemaPath + '/index.graphql',
 	])
-		.map((schemaPath) => path.resolve(context, schemaPath))
-		.find((schemaPath) => fs.existsSync(schemaPath) && fs.statSync(schemaPath).isFile());
+		.map((schemaPath) => resolve(context, schemaPath))
+		.find((schemaPath) => existsSync(schemaPath) && statSync(schemaPath).isFile());
 	if (!schemaPath)
 		throw new Error(`Failed to resolve ${schemaPath} from ${context}`);
 	if (loaded.has(schemaPath))
@@ -57,10 +44,10 @@ function resolveIncludes(context, schemaPath, loaded) {
 }
 
 function loadSchema(schemaPath, loaded = new Set()) {
-	return fs.readFileSync(schemaPath).toString().split(/(\r\n|\r|\n)/).map((line) => {
+	return readFileSync(schemaPath).toString().split(/(\r\n|\r|\n)/).map((line) => {
 		const match = line.match(/@include\([\'|\"](.*?)[\'|\"]\)/);
 		if (match)
-			return resolveIncludes(path.dirname(schemaPath), match[1], loaded);
+			return resolveIncludes(dirname(schemaPath), match[1], loaded);
 		return line;
 	}).join('\r\n');
 }

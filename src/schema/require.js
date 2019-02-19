@@ -1,7 +1,7 @@
 import { existsSync as exists, statSync as stat, readFileSync as read } from 'fs';
 import { resolve } from 'path';
-import { buildASTSchema } from 'graphql/utilities';
-import { parse, visit, Kind, BREAK } from 'graphql/language';
+import { parse, visit, Kind, BREAK, buildASTSchema, extendSchema } from 'graphql';
+import { connectionArgs } from 'graphql-relay';
 import scalars from './scalars';
 
 function resolveType(node) {
@@ -26,10 +26,6 @@ const defaultSchemaDefinitions = `
 	type Video { name: String uri: String! frame: Image! duration: Float! }
 	input VideoInput { name: String file: File! }
 `;
-
-const connectionArgs = parse(`
-	type Connected { connection(first: Int last: Int before: Cursor after: Cursor): Connection! }
-`).definitions[0].fields[0].arguments;
 
 function readSchema(path, options = {}) {
 	const source = path;
@@ -66,14 +62,9 @@ export function buildSchema(schemaString, options = {}) {
 			...node,
 			fields: node.interfaces.reduce((fields, node) => fields.concat(interfaces[node.name.value].fields), node.fields),
 		}),
-		[Kind.FIELD_DEFINITION]: (node) => {
-			const isConnection = !!visit(node, {
-				[Kind.NAMED_TYPE]: (node) => connectionTypes.includes(node.name.value.slice(0, -10)) ? BREAK : void 0,
-				[Kind.FIELD_DEFINITION]: { leave: () => null },
-			});
-			if (isConnection)
-				return { ...node, arguments: [...node.arguments, ...connectionArgs] };
-		},
+		[Kind.FIELD_DEFINITION]: (node) => connectionTypes.includes(node.name.value.slice(0, -10))
+			? { ...node, arguments: [...node.arguments, ...connectionArgs] }
+			: void 0,
 	});
 
 	// Build schema and
@@ -98,7 +89,7 @@ export function buildSchema(schemaString, options = {}) {
 		},
 	});
 
-	return schema;
+	return extendSchema(schema, { kind: Kind.DOCUMENT, definitions: ast.definitions.filter(({ kind }) => /Extension$/.test(kind)) });
 }
 
 export default function requireSchema(path, options) {

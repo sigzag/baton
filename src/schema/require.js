@@ -39,6 +39,50 @@ function readSchema(path, options = {}) {
 	);
 }
 
+
+function resolveIncludes(context, schemaPath, loaded) {
+	schemaPath = (/\.graphql$/.test(schemaPath) ? [schemaPath] : [
+		schemaPath,
+		schemaPath + '.graphql',
+		schemaPath + '/index.graphql',
+	])
+		.map((schemaPath) => path.resolve(context, schemaPath))
+		.find((schemaPath) => fs.existsSync(schemaPath) && fs.statSync(schemaPath).isFile());
+	if (!schemaPath)
+		throw new Error(`Failed to resolve ${schemaPath} from ${context}`);
+	if (loaded.has(schemaPath))
+		return '';
+	loaded.add(schemaPath);
+	return loadSchema(schemaPath, loaded);
+}
+
+function loadSchema(schemaPath, loaded = new Set()) {
+	return fs.readFileSync(schemaPath).toString().split(/(\r\n|\r|\n)/).map((line) => {
+		const match = line.match(/@include\([\'|\"](.*?)[\'|\"]\)/);
+		if (match)
+			return resolveIncludes(path.dirname(schemaPath), match[1], loaded);
+		return line;
+	}).join('\r\n');
+}
+
+export function getSchema(schemaPath) {
+	try {
+		let source = loadSchema(schemaPath);
+		source = `
+directive @include(if: Boolean) on FRAGMENT_SPREAD | FIELD
+directive @skip(if: Boolean) on FRAGMENT_SPREAD | FIELD
+${source}
+		`;
+		return buildSchema(source);
+	} catch (error) {
+		throw new Error(`
+Error loading schema. Expected the schema to be a .graphql or a .json
+file, describing your GraphQL server's API. Error detail:
+${error.stack}
+		`.trim());
+	}
+}
+
 export function buildSchema(schemaString, options = {}) {
 	const connectionTypes = Array.from(new Set((schemaString.match(/Connection\(.*?\)/g) || []).map((type) => type.slice(11,-1))));
 	const includedScalars = scalars.concat(options.scalars || []);
@@ -90,8 +134,4 @@ export function buildSchema(schemaString, options = {}) {
 	});
 
 	return extendSchema(schema, { kind: Kind.DOCUMENT, definitions: ast.definitions.filter(({ kind }) => /Extension$/.test(kind)) });
-}
-
-export default function requireSchema(path, options) {
-	return buildSchema(readSchema(resolve(path), options), options);
 }

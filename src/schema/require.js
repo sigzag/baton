@@ -85,7 +85,6 @@ export function buildSchema(schemaString, options = {}) {
 	`);
 
 	const interfaces = {};
-	visit(ast, { [Kind.OBJECT_TYPE_EXTENSION]: (node) => console.log(node) });
 	visit(ast, { [Kind.INTERFACE_TYPE_DEFINITION]: (node) => interfaces[node.name.value] = { fields: node.fields, types: [] } });
 	visit(ast, { [Kind.INTERFACE_TYPE_EXTENSION]: (node) => interfaces[node.name.value].fields.push(...node.fields) });
 	visit(ast, { [Kind.OBJECT_TYPE_DEFINITION]: (node) => node.interfaces.forEach((intf) => interfaces[intf.name.value].types.push(node.name.value)) });

@@ -1,7 +1,6 @@
 import { existsSync, statSync, readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { parse, visit, Kind, BREAK, buildASTSchema, extendSchema } from 'graphql';
-import { connectionArgs } from 'graphql-relay';
 import scalars from './scalars';
 
 function resolveType(node) {
@@ -26,6 +25,10 @@ const defaultSchemaDefinitions = `
 	type Video { name: String uri: String! frame: Image! duration: Float! }
 	input VideoInput { name: String file: File! }
 `;
+
+const connectionArgs = parse(`
+	type Connected { connection(first: Int last: Int before: Cursor after: Cursor): Connection! }
+`).definitions[0].fields[0].arguments;
 
 function resolveIncludes(context, schemaPath, loaded) {
 	schemaPath = (/\.graphql$/.test(schemaPath) ? [schemaPath] : [
@@ -97,9 +100,11 @@ export function buildSchema(schemaString, options = {}) {
 				.filter(({ types }) => types.includes(node.name.value))
 				.reduce((fields, node) => fields.concat(node.fields), node.fields),
 		}),
-		[Kind.FIELD_DEFINITION]: (node) => connectionTypes.includes(node.name.value.slice(0, -10))
-			? { ...node, arguments: [...node.arguments, ...connectionArgs] }
-			: void 0,
+		[Kind.FIELD_DEFINITION]: (node) => {
+			const type = node.type.kind === Kind.NON_NULL_TYPE ? node.type.type : node.type;
+			if (type.name && connectionTypes.includes(type.name.value.slice(0, -10)))
+				return { ...node, arguments: [...node.arguments, ...connectionArgs] };
+		},
 	});
 
 	// Build schema and

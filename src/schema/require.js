@@ -85,13 +85,18 @@ export function buildSchema(schemaString, options = {}) {
 	`);
 
 	const interfaces = {};
+	visit(ast, { [Kind.OBJECT_TYPE_EXTENSION]: (node) => console.log(node) });
 	visit(ast, { [Kind.INTERFACE_TYPE_DEFINITION]: (node) => interfaces[node.name.value] = { fields: node.fields, types: [] } });
-	visit(ast, { [Kind.OBJECT_TYPE_DEFINITION]: (node) => node.interfaces.forEach((intf) => interfaces[intf.name.value].types.push(node)) });
+	visit(ast, { [Kind.INTERFACE_TYPE_EXTENSION]: (node) => interfaces[node.name.value].fields.push(...node.fields) });
+	visit(ast, { [Kind.OBJECT_TYPE_DEFINITION]: (node) => node.interfaces.forEach((intf) => interfaces[intf.name.value].types.push(node.name.value)) });
+	visit(ast, { [Kind.OBJECT_TYPE_EXTENSION]: (node) => node.interfaces.forEach((intf) => interfaces[intf.name.value].types.push(node.name.value)) });
 
 	ast = visit(ast, {
 		[Kind.OBJECT_TYPE_DEFINITION]: (node) => ({
 			...node,
-			fields: node.interfaces.reduce((fields, node) => fields.concat(interfaces[node.name.value].fields), node.fields),
+			fields: Object.values(interfaces)
+				.filter(({ types }) => types.includes(node.name.value))
+				.reduce((fields, node) => fields.concat(node.fields), node.fields),
 		}),
 		[Kind.FIELD_DEFINITION]: (node) => connectionTypes.includes(node.name.value.slice(0, -10))
 			? { ...node, arguments: [...node.arguments, ...connectionArgs] }
@@ -111,7 +116,7 @@ export function buildSchema(schemaString, options = {}) {
 	visit(ast, {
 		[Kind.INTERFACE_TYPE_DEFINITION]: (node) => {
 			const type = schema.getType(node.name.value);
-			type._types = interfaces[node.name.value].types.map((node) => schema.getType(node.name.value));
+			type._types = interfaces[node.name.value].types.map((name) => schema.getType(node));
 			/*type._typeConfig.resolveType = */type.resolveType = resolveType;
 		},
 		[Kind.UNION_TYPE_DEFINITION]: (node) => {

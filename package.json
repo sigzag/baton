@@ -1,6 +1,6 @@
 {
   "name": "relay-baton",
-  "version": "3.2.2",
+  "version": "3.2.3",
   "description": "Mongoose & just regular string relay schema builder & helpers & tidbits & stuffs, ooh, and relay subscriptions",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",

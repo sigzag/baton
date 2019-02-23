@@ -46,7 +46,7 @@ function resolveIncludes(context, schemaPath, loaded) {
 	return loadSchema(schemaPath, loaded);
 }
 
-function loadSchema(schemaPath, loaded = new Set()) {
+export function loadSchema(schemaPath, loaded = new Set()) {
 	return readFileSync(schemaPath).toString().split(/(\r\n|\r|\n)/).map((line) => {
 		const match = line.match(/@include\([\'|\"](.*?)[\'|\"]\)/);
 		if (match)

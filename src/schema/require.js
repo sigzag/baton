@@ -30,27 +30,23 @@ const connectionArgs = parse(`
 	type Connected { connection(first: Int last: Int before: Cursor after: Cursor): Connection! }
 `).definitions[0].fields[0].arguments;
 
-function resolveIncludes(context, schemaPath, loaded) {
+export function loadSchema(schemaPath, loaded = new Set()) {
 	schemaPath = (/\.graphql$/.test(schemaPath) ? [schemaPath] : [
 		schemaPath,
 		schemaPath + '.graphql',
 		schemaPath + '/index.graphql',
-	])
-		.map((schemaPath) => resolve(context, schemaPath))
-		.find((schemaPath) => existsSync(schemaPath) && statSync(schemaPath).isFile());
+	]).find((schemaPath) => existsSync(schemaPath) && statSync(schemaPath).isFile());
+
 	if (!schemaPath)
 		throw new Error(`Failed to resolve ${schemaPath} from ${context}`);
 	if (loaded.has(schemaPath))
 		return '';
 	loaded.add(schemaPath);
-	return loadSchema(schemaPath, loaded);
-}
 
-export function loadSchema(schemaPath, loaded = new Set()) {
 	return readFileSync(schemaPath).toString().split(/(\r\n|\r|\n)/).map((line) => {
 		const match = line.match(/@include\([\'|\"](.*?)[\'|\"]\)/);
 		if (match)
-			return resolveIncludes(dirname(schemaPath), match[1], loaded);
+			return loadSchema(resolve(dirname(schemaPath), match[1]), loaded);
 		return line;
 	}).join('\r\n');
 }

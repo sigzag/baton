@@ -38,7 +38,7 @@ export function loadSchema(schemaPath, loaded = new Set()) {
 	]).find((schemaPath) => existsSync(schemaPath) && statSync(schemaPath).isFile());
 
 	if (!schemaPath)
-		throw new Error(`Failed to resolve ${schemaPath} from ${context}`);
+		throw new Error(`Failed to resolve ${schemaPath}`);
 	if (loaded.has(schemaPath))
 		return '';
 	loaded.add(schemaPath);

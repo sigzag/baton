@@ -40,9 +40,13 @@ export default function(query, mutate) {
 			},
 		};
 
-		if (operation.fragment.type === 'Mutation')
-			return mutate(operationConfig, send);
-		else
-			return query(operationConfig, send);
+		switch (operation.operationKind) {
+			case 'mutation':
+				return mutate(operationConfig, send);
+			case 'query':
+				return query(operationConfig, send);
+			default:
+				throw new Error(`Invalid operation (operationKind not supported): ${operation}`);
+		}
 	}
 }

@@ -4,11 +4,11 @@ import files from './files';
 
 export default function(options = {}) {
 	const graphqlOptions = typeof options.getContext === 'function'
-		? (...args) => ({ ...options, context: options.getContext(...args) })
+		? async (...args) => ({ ...options, context: await options.getContext(...args) })
 		: options;
 
 	return [
-		function(req, res, next) {
+		async function(req, res, next) {
 			Object.assign(req, options);
 			next();
 		},

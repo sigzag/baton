@@ -10,6 +10,6 @@ export default [
 	Date,
 	File,
 	// Geo,
-	ID,
+	// ID,
 	JSON
 ];

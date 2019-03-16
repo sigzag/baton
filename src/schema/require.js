@@ -3,13 +3,13 @@ import { resolve, dirname } from 'path';
 import { parse, visit, Kind, BREAK, buildASTSchema, extendSchema } from 'graphql';
 import scalars from './scalars';
 
-function resolveType(node) {
+function resolveType(node, ctx, info) {
 	const nodeType = !node.__typename
 		? node.constructor.name
 		: typeof node.__typename === 'function'
 		? node.__typename()
 		: node.__typename;
-	return this._types.find(({ name }) => name == nodeType);
+	return info.schema.getType(nodeType);
 }
 
 const defaultSchemaDefinitions = `
@@ -116,7 +116,7 @@ export function buildSchema(schemaString, options = {}) {
 	visit(ast, {
 		[Kind.INTERFACE_TYPE_DEFINITION]: (node) => {
 			const type = schema.getType(node.name.value);
-			type._types = interfaces[node.name.value].types.map((name) => schema.getType(name));
+			// type._types = interfaces[node.name.value].types.map((name) => schema.getType(name));
 			/*type._typeConfig.resolveType = */type.resolveType = resolveType;
 		},
 		[Kind.UNION_TYPE_DEFINITION]: (node) => {

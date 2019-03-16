@@ -1,6 +1,5 @@
 import { Server } from 'ws';
-import { parse, validate, execute, valueFromAST } from 'graphql';
-import { getVariableValues } from 'graphql/execution/values';
+import { parse, validate, subscribe as _subscribe } from 'graphql';
 
 export default function({ formatError = String, server, port, schema, rootValue, getContext = () => ({}) }) {
 	const wss = new Server({ server, port });
@@ -16,33 +15,26 @@ export default function({ formatError = String, server, port, schema, rootValue,
 
 		const subscriptions = {};
 		async function subscribe({ id, queryString, variables }) {
-			if (subscriptions[id])
+			if (id in subscriptions)
 				return;
 
-			const query = parse(queryString);
-			const errors = validate(schema, query);
+			const document = parse(queryString);
+			
+			const errors = validate(schema, document);
 			if (errors.length)
 				return socket.send(JSON.stringify({ id, errors: errors.map(formatError) }));
 
-			const rootField = query.definitions[0].selectionSet.selections[0];
-			const operationName = rootField.name.value;
-			const operationArgs = getVariableValues(schema, query.definitions[0].variableDefinitions, variables);
-			
-			if (operationArgs.errors) {
-				console.log(operationArgs.errors);
-				return socket.send(JSON.stringify({ id, errors: errors.map(formatError) }));
-			}
-
-			const observable = await rootValue[operationName](operationArgs.coerced, context);
-			subscriptions[id] = observable.subscribe(async (data) => {
-				const rootValue = { [operationName]: data };
-				const payload = await execute(schema, query, rootValue, context, variables);
+			const iterator = await _subscribe(schema, document, null, context, variables);
+			subscriptions[id] = () => iterator.return();
+			for await (const payload of iterator) {
+				if (payload.errors) for (const error of payload.errors)
+					console.log(error);
 				socket.send(JSON.stringify({ id, ...payload }));
-			});
+			}
 		}
 		function unsubscribe({ id }) {
-			if (subscriptions[id]) {
-				subscriptions[id].unsubscribe();
+			if (id in subscriptions) {
+				subscriptions[id]();
 				subscriptions[id] = null;
 			}
 		}
@@ -56,6 +48,6 @@ export default function({ formatError = String, server, port, schema, rootValue,
 					return unsubscribe(data);
 			}
 		});
-		socket.on('close', () => Object.values(subscriptions).forEach((subscription) => subscription && subscription.unsubscribe()));
+		socket.on('close', () => Object.values(subscriptions).forEach((subscription) => subscription && subscription()));
 	});
 }

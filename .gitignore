@@ -4,6 +4,5 @@
 **.DS_Store
 
 **.fseventsd/
-build/
 **yarn-error.log
 **yarn.lock

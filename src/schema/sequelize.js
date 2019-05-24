@@ -75,7 +75,7 @@ export class Node {
 	}
 
 	get __typename() {
-		return this.constructor.table;
+		return this.constructor.table.getTableName();
 	}
 	id() {
 		return toBase64(`${this.__typename}:${this._id}`);

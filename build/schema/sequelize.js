@@ -111,7 +111,7 @@ class Node {
   }
 
   get __typename() {
-    return this.constructor.table;
+    return this.constructor.table.getTableName();
   }
 
   id() {

@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.createFragmentRootContainer = createFragmentRootContainer;
 exports.createRefetchRootContainer = createRefetchRootContainer;
 exports.createPaginationRootContainer = createPaginationRootContainer;
-exports.withEnvironment = exports.EnvironmentConsumer = exports.EnvironmentProvider = void 0;
+exports.withEnvironment = exports.EnvironmentConsumer = exports.EnvironmentProvider = exports.context = void 0;
 
 var _react = _interopRequireWildcard(require("react"));
 
@@ -28,12 +28,12 @@ function _defineProperty(obj, key, value) { if (key in obj) { Object.definePrope
 
 function _extends() { _extends = Object.assign || function (target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i]; for (var key in source) { if (Object.prototype.hasOwnProperty.call(source, key)) { target[key] = source[key]; } } } return target; }; return _extends.apply(this, arguments); }
 
-const _createContext = (0, _react.createContext)(),
-      EnvironmentProvider = _createContext.Provider,
-      EnvironmentConsumer = _createContext.Consumer;
-
-exports.EnvironmentConsumer = EnvironmentConsumer;
+const context = (0, _react.createContext)();
+exports.context = context;
+const EnvironmentProvider = context.Provider;
 exports.EnvironmentProvider = EnvironmentProvider;
+const EnvironmentConsumer = context.Consumer;
+exports.EnvironmentConsumer = EnvironmentConsumer;
 
 const withEnvironment = Component => props => _react.default.createElement(EnvironmentConsumer, null, environment => _react.default.createElement(Component, _extends({}, props, {
   environment: environment

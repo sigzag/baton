@@ -2,13 +2,14 @@ import React, { createContext } from 'react';
 import { createFragmentContainer, createRefetchContainer, createPaginationContainer } from 'react-relay';
 import QueryContainer from './QueryContainer';
 
-const { Provider: EnvironmentProvider, Consumer: EnvironmentConsumer } = createContext();
-const withEnvironment = (Component) => (props) => (
+export const context = createContext();
+export const EnvironmentProvider = context.Provider;
+export const EnvironmentConsumer = context.Consumer;
+export const withEnvironment = (Component) => (props) => (
 	<EnvironmentConsumer>
 		{(environment) => <Component {...props} environment={environment} />}
 	</EnvironmentConsumer>
 );
-export { EnvironmentProvider, EnvironmentConsumer, withEnvironment };
 
 const getDisplayName = (Component) => Component.displayName || Component.name || 'Component';
 

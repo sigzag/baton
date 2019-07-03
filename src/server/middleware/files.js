@@ -6,11 +6,15 @@ export default function(options) {
 	return function(req, res, next) {
 		return multerMiddleware(req, res, function() {
 			if (req.body) {
-				req.body.variables = JSON.parse(req.body.variables);
-				if (req.files)
-					for (let file of req.files) {
-						set(req.body.variables.input, file.fieldname, file);
-					}
+				try {
+					req.body.variables = JSON.parse(req.body.variables);
+					if (req.files)
+						for (let file of req.files) {
+							set(req.body.variables.input, file.fieldname, file);
+						}
+				} catch (e) {
+					console.warn('Invalid req.body.variables: ', req.body.variables);
+				}
 			}
 			next();
 		});

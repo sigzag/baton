@@ -95,12 +95,11 @@ class ServiceUnavailable extends HTTPError {
 exports.ServiceUnavailable = ServiceUnavailable;
 
 function errorHandler(captureException) {
-  return function errorHandler(err, req, res, next) {
+  return function errorHandler(err, req, res) {
     if (err instanceof HTTPError) {
       res.status(err.status).send(err.message);
     } else {
       if (captureException) captureException(err);
-      console.log(err);
       res.status(500).send(err.message);
     }
   };

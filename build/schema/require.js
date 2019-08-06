@@ -143,6 +143,6 @@ function buildSchema(schemaString, options = {}) {
     kind: _graphql.Kind.DOCUMENT,
     definitions: ast.definitions.filter(({
       kind
-    }) => /Extension$/.test(kind))
+    }) => /^(?!Interface).+TypeExtension$/.test(kind))
   });
 }

@@ -125,5 +125,5 @@ export function buildSchema(schemaString, options = {}) {
 		},
 	});
 
-	return extendSchema(schema, { kind: Kind.DOCUMENT, definitions: ast.definitions.filter(({ kind }) => /Extension$/.test(kind)) });
+	return extendSchema(schema, { kind: Kind.DOCUMENT, definitions: ast.definitions.filter(({ kind }) => /^(?!Interface).+TypeExtension$/.test(kind)) });
 }

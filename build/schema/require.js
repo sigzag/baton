@@ -90,11 +90,13 @@ function buildSchema(schemaString, options = {}) {
   const interfaces = {};
   (0, _graphql.visit)(ast, {
     [_graphql.Kind.INTERFACE_TYPE_DEFINITION]: node => interfaces[node.name.value] = {
-      fields: node.fields,
+      fields: [...node.fields],
       types: []
     }
-  }); // visit(ast, { [Kind.INTERFACE_TYPE_EXTENSION]: (node) => interfaces[node.name.value].fields.push(...node.fields) });
-
+  });
+  (0, _graphql.visit)(ast, {
+    [_graphql.Kind.INTERFACE_TYPE_EXTENSION]: node => interfaces[node.name.value].fields.push(...node.fields)
+  });
   (0, _graphql.visit)(ast, {
     [_graphql.Kind.OBJECT_TYPE_DEFINITION]: node => node.interfaces.forEach(intf => interfaces[intf.name.value].types.push(node.name.value))
   });
@@ -141,6 +143,6 @@ function buildSchema(schemaString, options = {}) {
     kind: _graphql.Kind.DOCUMENT,
     definitions: ast.definitions.filter(({
       kind
-    }) => /TypeExtension$/.test(kind))
+    }) => /Extension$/.test(kind))
   });
 }

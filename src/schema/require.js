@@ -84,8 +84,8 @@ export function buildSchema(schemaString, options = {}) {
 	`);
 
 	const interfaces = {};
-	visit(ast, { [Kind.INTERFACE_TYPE_DEFINITION]: (node) => interfaces[node.name.value] = { fields: node.fields, types: [] } });
-	// visit(ast, { [Kind.INTERFACE_TYPE_EXTENSION]: (node) => interfaces[node.name.value].fields.push(...node.fields) });
+	visit(ast, { [Kind.INTERFACE_TYPE_DEFINITION]: (node) => interfaces[node.name.value] = { fields: [...node.fields], types: [] } });
+	visit(ast, { [Kind.INTERFACE_TYPE_EXTENSION]: (node) => interfaces[node.name.value].fields.push(...node.fields) });
 	visit(ast, { [Kind.OBJECT_TYPE_DEFINITION]: (node) => node.interfaces.forEach((intf) => interfaces[intf.name.value].types.push(node.name.value)) });
 	visit(ast, { [Kind.OBJECT_TYPE_EXTENSION]: (node) => node.interfaces.forEach((intf) => interfaces[intf.name.value].types.push(node.name.value)) });
 
@@ -125,5 +125,5 @@ export function buildSchema(schemaString, options = {}) {
 		},
 	});
 
-	return extendSchema(schema, { kind: Kind.DOCUMENT, definitions: ast.definitions.filter(({ kind }) => /TypeExtension$/.test(kind)) });
+	return extendSchema(schema, { kind: Kind.DOCUMENT, definitions: ast.definitions.filter(({ kind }) => /Extension$/.test(kind)) });
 }

@@ -33,7 +33,7 @@ export class ServiceUnavailable extends HTTPError {
 }
 
 export function errorHandler(captureException) {
-	return function errorHandler(err, req, res) {
+	return function errorHandler(err, req, res, next) {
 		if (err instanceof HTTPError) {
 			res.status(err.status).send(err.message);
 		} else {
